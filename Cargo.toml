@@ -12,3 +12,6 @@ unicode-normalization = "0.1.22"
 glad-gl = { path = "./build/glad-gl" }
 nalgebra-glm = "0.18.0"
 lazy_static = "1.4.0"
+log = "0.4.20"
+env_logger = "0.10.1"
+textwrap = "0.16.0"

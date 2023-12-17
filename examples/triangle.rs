@@ -30,7 +30,7 @@ fn main() {
         .create_window(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
-            "triangle",
+            "Triangle",
             glfw::WindowMode::Windowed,
         )
         .expect("failed to create GLFW window");
@@ -40,15 +40,30 @@ fn main() {
 
     glad_gl::gl::load(|procname| glfw.get_proc_address_raw(procname) as *const _);
 
-    let vertex_path = Path::new("shaders/triangle/vertex.glsl");
-    let fragment_path = Path::new("shaders/triangle/fragment.glsl");
-    let shader = Shader::new(vertex_path, fragment_path);
+    // Configure the shader
+    let vertex_source = r#"
+#version 330 core
+layout (location = 0) in vec3 aPos;
 
-    let vertices = [-0.5_f32, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0];
+void main() {
+    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+}
+"#;
+    let fragment_source = r#"
+#version 330 core
+out vec4 FragColor;
+
+void main() {
+    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+} 
+"#;
+    let shader = Shader::new_from_source(vertex_source, fragment_source);
 
     let vao = Vao::new();
     vao.bind();
 
+    // Load the vertices data into the VBO
+    let vertices = [-0.5_f32, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0];
     let vbo = Vbo::new(0);
     vbo.bind();
     vbo.buffer_data(&vertices, STATIC_DRAW);
@@ -72,12 +87,11 @@ fn main() {
         }
 
         shader.use_program();
-
         vbo.configure(3, 0);
-
         unsafe {
             DrawArrays(TRIANGLES, 0, 3);
         }
+        vbo.unbind();
 
         unsafe {
             let error_code = GetError();

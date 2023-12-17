@@ -31,13 +31,14 @@ fn main() {
         .create_window(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
-            "cube",
+            "Cube",
             glfw::WindowMode::Windowed,
         )
         .expect("failed to create GLFW window");
 
     window.set_key_polling(true);
     window.make_current();
+    window.set_sticky_keys(true);
 
     glad_gl::gl::load(|procname| glfw.get_proc_address_raw(procname) as *const _);
 
@@ -46,31 +47,67 @@ fn main() {
         DepthFunc(LESS);
     }
 
+    let vertex_source = r#"
+#version 330 core
+
+// Input vertex data, different for all executions of this shader.
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec3 vertexColor;
+
+// Output data ; will be interpolated for each fragment.
+out vec3 fragmentColor;
+// Values that stay constant for the whole mesh.
+uniform mat4 MVP;
+
+void main(){	
+
+	// Output position of the vertex, in clip space : MVP * position
+	gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
+
+	// The color of each vertex will be interpolated
+	// to produce the color of each fragment
+	fragmentColor = vertexColor;
+}
+"#;
+    let fragment_source = r#"
+#version 330 core
+
+// Interpolated values from the vertex shaders
+in vec3 fragmentColor;
+
+// Ouput data
+out vec3 color;
+
+void main(){
+
+	// Output color = color specified in the vertex shader, 
+	// interpolated between all 3 surrounding vertices
+	color = fragmentColor;
+
+}
+"#;
+    let shader = Shader::new_from_source(vertex_source, fragment_source);
+    shader.use_program();
+
+    // Configure the uniform MVP matrix
+    let projection_matrix =
+        glm::perspective(SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32, 45.0, 0.1, 100.0);
+    let view_matrix = glm::look_at(
+        &Vec3::new(4.0, 3.0, 2.0),
+        &Vec3::new(0.0, 0.0, 0.0),
+        &Vec3::new(0.0, 1.0, 0.0),
+    );
+    shader.set_mat4("MVP", projection_matrix * view_matrix);
+
     let vao = Vao::new();
     vao.bind();
 
-    let vertex_path = Path::new("shaders/cube/vertex.glsl");
-    let fragment_path = Path::new("shaders/cube/fragment.glsl");
-    let shader = Shader::new(vertex_path, fragment_path);
-
-    window.set_sticky_keys(true);
-
     unsafe {
-        PolygonMode(FRONT_AND_BACK, LINE);
+        // PolygonMode(FRONT_AND_BACK, LINE);
         ClearColor(0.0, 0.0, 0.4, 0.0);
         // Enable(BLEND);
         // BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
     }
-
-    let projection_matrix =
-        glm::perspective(SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32, 45.0, 0.1, 100.0);
-    let view_matrix = glm::look_at(
-        &Vec3::new(4.0, 3.0, 3.0),
-        &Vec3::new(0.0, 0.0, 0.0),
-        &Vec3::new(0.0, 1.0, 0.0),
-    );
-    let model_matrix = glm::identity();
-    let mvp_matrix = projection_matrix * view_matrix * model_matrix;
 
     let vertices = [
         -1.0_f32, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0,
@@ -81,6 +118,10 @@ fn main() {
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0, -1.0, 1.0,
     ];
+    let vbo = Vbo::new(0);
+    vbo.bind();
+    vbo.buffer_data(&vertices, STATIC_DRAW);
+
     let colors = [
         0.583_f32, 0.771, 0.014, 0.609, 0.115, 0.436, 0.327, 0.483, 0.844, 0.822, 0.569, 0.201,
         0.435, 0.602, 0.223, 0.310, 0.747, 0.185, 0.597, 0.770, 0.761, 0.559, 0.436, 0.730, 0.359,
@@ -92,11 +133,6 @@ fn main() {
         0.517, 0.713, 0.338, 0.053, 0.959, 0.120, 0.393, 0.621, 0.362, 0.673, 0.211, 0.457, 0.820,
         0.883, 0.371, 0.982, 0.099, 0.879,
     ];
-
-    let vbo = Vbo::new(0);
-    vbo.bind();
-    vbo.buffer_data(&vertices, STATIC_DRAW);
-
     let colors_vbo = Vbo::new(1);
     colors_vbo.bind();
     colors_vbo.buffer_data(&colors, STATIC_DRAW);
@@ -111,10 +147,6 @@ fn main() {
             // ClearDepth(1.0);
             Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
         }
-
-        // Enable the shader and set the MVP matrix
-        shader.use_program();
-        shader.set_mat4("MVP", mvp_matrix);
 
         vbo.configure(3, 0);
         colors_vbo.configure(3, 0);
@@ -142,7 +174,6 @@ fn main() {
     vbo.delete_array();
     colors_vbo.delete();
     vao.delete_array();
-
     // Manually delete the shader
     shader.delete_program();
 }

@@ -23,7 +23,7 @@ fn main() {
         .create_window(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
-            "spinning_cube",
+            "Colored cube",
             glfw::WindowMode::Windowed,
         )
         .expect("failed to create GLFW window");
@@ -37,17 +37,12 @@ fn main() {
     unsafe {
         Enable(DEPTH_TEST);
         DepthFunc(LESS);
+        ClearColor(0.1, 0.12, 0.2, 1.0);
     }
 
-    let vertices = [
-        // Front face
-        0.5_f32, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, // Back face
-        0.5, 0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5,
-    ];
-    let colors = [
-        1.0_f32, 0.4, 0.6, 1.0, 0.9, 0.2, 0.7, 0.3, 0.8, 0.5, 0.3, 1.0, 0.2, 0.6, 1.0, 0.6, 1.0,
-        0.4, 0.6, 0.8, 0.8, 0.4, 0.8, 0.8,
-    ];
+    let vao = Vao::new();
+    vao.bind();
+
     let indices = [
         // Front
         0_u16, 1, 2, 2, 3, 0, // Right
@@ -57,25 +52,55 @@ fn main() {
         4, 7, 6, 6, 5, 4, // Top
         5, 1, 0, 0, 4, 5,
     ];
-
-    let vao = Vao::new();
-    vao.bind();
-
     let indices_ebo = Ebo::new();
     indices_ebo.bind();
     indices_ebo.buffer_data(&indices, STATIC_DRAW);
 
+    let vertices = [
+        // Front face
+        0.5_f32, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, // Back face
+        0.5, 0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5,
+    ];
     let vbo = Vbo::new(0);
     vbo.bind();
     vbo.buffer_data(&vertices, STATIC_DRAW);
 
+    let colors = [
+        1.0_f32, 0.4, 0.6, 1.0, 0.9, 0.2, 0.7, 0.3, 0.8, 0.5, 0.3, 1.0, 0.2, 0.6, 1.0, 0.6, 1.0,
+        0.4, 0.6, 0.8, 0.8, 0.4, 0.8, 0.8,
+    ];
     let colors_vbo = Vbo::new(1);
     colors_vbo.bind();
     colors_vbo.buffer_data(&colors, STATIC_DRAW);
 
-    let vertex_source = Path::new("shaders/spinning_cube/vertex.glsl");
-    let fragment_source = Path::new("shaders/spinning_cube/fragment.glsl");
-    let shader = Shader::new(vertex_source, fragment_source);
+    let vertex_source = r#"
+#version 410
+
+layout(location = 0) in vec3 pos;
+layout(location = 1) in vec3 vertex_color;
+
+uniform mat4 transform;
+
+out vec3 color;
+
+void main() {
+  gl_Position = transform * vec4(pos, 1.0);
+  color = vertex_color;
+}
+"#;
+    let fragment_source = r#"
+#version 410
+
+in vec3 color;
+
+out vec4 frag_color;
+
+void main() {
+  frag_color = vec4(color, 1.0);
+}
+"#;
+    let shader = Shader::new_from_source(vertex_source, fragment_source);
+    shader.use_program();
 
     let projection_matrix =
         glm::perspective(SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32, 45.0, 0.1, 100.0);
@@ -84,8 +109,7 @@ fn main() {
         &Vec3::new(0.0, 0.0, 0.0),
         &Vec3::new(0.0, 1.0, 0.0),
     );
-    let model_matrix = glm::identity();
-    let transform = projection_matrix * view_matrix * model_matrix;
+    shader.set_mat4("transform", projection_matrix * view_matrix);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -94,13 +118,9 @@ fn main() {
         }
 
         unsafe {
-            ClearColor(0.1, 0.12, 0.2, 1.0);
             // ClearDepth(1.0);
             Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
         }
-
-        shader.use_program();
-        shader.set_mat4("transform", transform);
 
         vbo.configure(3, 0);
         colors_vbo.configure(3, 0);

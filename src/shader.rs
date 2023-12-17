@@ -12,13 +12,6 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub fn new(vertex_path: &Path, fragment_path: &Path) -> Shader {
-        let vertex_shader_source = std::fs::read_to_string(vertex_path).unwrap();
-        let fragment_shader_source = std::fs::read_to_string(fragment_path).unwrap();
-
-        Self::new_from_source(&vertex_shader_source, &fragment_shader_source)
-    }
-
     pub fn new_from_source(vertex_source: &str, fragment_source: &str) -> Shader {
         let vertex_shader = shader_from_source(vertex_source, VERTEX_SHADER);
         let fragment_shader = shader_from_source(fragment_source, FRAGMENT_SHADER);

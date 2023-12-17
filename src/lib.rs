@@ -1,6 +1,5 @@
 // ...
 pub mod shader;
-pub mod text_atlas;
 
 use std::ffi::c_uint;
 
@@ -39,18 +38,18 @@ impl Vbo {
         }
     }
 
-    pub fn sub_buffer_data(&self, data: &[f32], offset: isize) {
-        unsafe {
-            BindBuffer(ARRAY_BUFFER, self.id);
-            BufferSubData(ARRAY_BUFFER, offset, std::mem::size_of_val(data) as isize, data.as_ptr() as *const _);
-        }
-    }
-
     pub fn configure(&self, size: i32, stride: i32) {
         unsafe {
             EnableVertexAttribArray(self.shader_index);
             BindBuffer(ARRAY_BUFFER, self.id);
-            VertexAttribPointer(self.shader_index, size, FLOAT, FALSE, stride, std::ptr::null());
+            VertexAttribPointer(
+                self.shader_index,
+                size,
+                FLOAT,
+                FALSE,
+                stride,
+                std::ptr::null(),
+            );
         }
     }
 
@@ -113,6 +112,58 @@ impl Ebo {
                 std::mem::size_of_val(data) as _,
                 data.as_ptr() as _,
                 usage,
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Texture(u32);
+
+impl Texture {
+    pub fn new() -> Self {
+        let mut texture = 0;
+        unsafe {
+            GenTextures(1, &mut texture);
+        }
+        Self(texture)
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            BindTexture(TEXTURE_2D, self.0);
+        }
+    }
+
+    pub fn set_parameters(
+        &self,
+        wrap_horizontal: c_uint,
+        wrap_vertical: c_uint,
+        minification_filter: c_uint,
+        magnification_filter: c_uint,
+    ) {
+        unsafe {
+            // Set wrapping mode
+            TexParameteri(TEXTURE_2D, TEXTURE_WRAP_S, wrap_horizontal as i32);
+            TexParameteri(TEXTURE_2D, TEXTURE_WRAP_T, wrap_vertical as i32);
+            // Set filtering mode
+            TexParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, minification_filter as i32);
+            TexParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, magnification_filter as i32);
+        }
+    }
+
+    pub fn image_2d(&self, width: i32, height: i32, data: &[u8]) {
+        unsafe {
+            TexImage2D(
+                TEXTURE_2D,
+                0,
+                RED as i32,
+                width,
+                height,
+                0,
+                RED,
+                UNSIGNED_BYTE,
+                data.as_ptr() as _,
             );
         }
     }
