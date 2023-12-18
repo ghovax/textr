@@ -1,6 +1,3 @@
-// ...
-pub mod shader;
-
 use std::ffi::c_uint;
 
 use glad_gl::gl::*;
