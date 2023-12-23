@@ -1,0 +1,3 @@
+struct EditCursor {
+    position: usize,
+}

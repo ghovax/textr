@@ -1,52 +1,128 @@
-use std::{collections::HashMap, fs::File, path::Path};
+use std::{collections::HashMap, fs::{File, Permissions}, path::Path, time::Instant};
 
+use buffers::{Texture, Vao, Vbo};
 use chrono::Local;
-use glad_gl::gl::*;
+// use clap::Parser;
+extern crate gl;
+use gl::*;
 use glfw::{Action, Context, Key, Modifiers, WindowHint};
-use glm::{IVec2, Vec3};
+use glm::{IVec2, Vec2, Vec3};
+use itertools::Itertools;
 use log::LevelFilter;
 use nalgebra_glm as glm;
 use shader::Shader;
-use buffers::{Texture, Vao, Vbo};
 use unicode_normalization::UnicodeNormalization;
 
 use std::io::Write;
 
 mod buffers;
+mod line;
 mod shader;
 
+use crate::line::Margins;
+
+fn framebuffer_size_callback(window: &mut glfw::Window, width: i32, height: i32) {
+    unsafe {
+        // gl::Viewport(0, 0, width, height);
+        Clear(COLOR_BUFFER_BIT)
+    }
+    window.swap_buffers()
+}
+
 fn main() {
-    let target = Box::new(File::create("console.log").expect("can't create log file"));
-    env_logger::Builder::new()
-        .target(env_logger::Target::Stderr)
-        .write_style(env_logger::WriteStyle::Always)
-        .format_target(false)
-        .format_timestamp_millis()
-        .filter(None, LevelFilter::Trace)
+    // Log file with the current time and date
+    // let log_file_name = format!("logs/log_{}.txt", Local::now().format("%Y-%m-%d_%H-%M-%S"));
+    // let log_file = Box::new(File::create(log_file_name).unwrap());
+    env_logger::builder()
+        // .target(env_logger::Target::Pipe(log_file))
+        .filter_level(LevelFilter::Trace)
         .init();
 
-    // GLFW window stuff
-    let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
+    let document_path = "assets/textTest.txt";
+    let font_path = "fonts/cmunrm.ttf";
+
+    log::trace!(
+        "The document '{}' will be loaded with the font '{}'",
+        document_path,
+        font_path
+    );
+
+    // --------- INITIALIZE THE GLFW WINDOW ---------
+
+    let mut glfw = glfw::init(glfw::log_errors).unwrap();
+
     glfw.window_hint(WindowHint::ContextVersion(3, 3));
     glfw.window_hint(WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
+    glfw.window_hint(WindowHint::RefreshRate(Some(60)));
+    glfw.window_hint(WindowHint::Samples(Some(4)));
 
     if cfg!(target_os = "macos") {
+        glfw.window_hint(WindowHint::CocoaRetinaFramebuffer(true));
         glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
     }
 
     let (mut window, events) = glfw
-        .create_window(800, 600, "Text rendering", glfw::WindowMode::Windowed)
+        .create_window(800, 600, &document_path, glfw::WindowMode::Windowed)
         .expect("failed to create GLFW window");
-
-    let (mut screen_width, mut screen_height) = window.get_framebuffer_size();
 
     window.make_current();
     window.set_resizable(true);
     window.set_all_polling(true);
+    window.set_framebuffer_size_callback(framebuffer_size_callback);
+    window.set_size_limits(Some(480), Some(320), None, None);
 
-    glad_gl::gl::load(|procname| glfw.get_proc_address_raw(procname) as *const _);
+    // --------- LOAD THE LIBRARY FREETYPE FOR THE GLYPHS ---------
+
+    let library: freetype::Library = freetype::Library::init().unwrap();
+
+    // Load the text from the file path given
+    let mut text = std::fs::read_to_string(&document_path).unwrap();
+    log::trace!("Imported the text: {:?}", text);
+    let face = library.new_face(font_path, 0).unwrap();
+
+    // --------- CALCULATE THE LINE LENGTH BASED ON AVERAGE CHARACTER ADVANCE ---------
+
+    let font_size = 50.0; // Arbitrary unit of measurement
+    face.set_pixel_sizes(0, font_size as u32).unwrap(); // TODO: `pixel_width` is 0? Probably it means "take the default one"
+
+    let margins = Margins {
+        top: 60.0,
+        bottom: 60.0,
+        left: 30.0,
+        right: 30.0,
+    };
+
+    let framebuffer_size = window.get_framebuffer_size();
+    let (mut window_width, mut window_height) =
+        (framebuffer_size.0 as f32, framebuffer_size.1 as f32);
+
+    let mut character_advances = Vec::new();
+    for character_code in
+        r#"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
+            .chars()
+            .nfc()
+    {
+        face.load_char(character_code as usize, freetype::face::LoadFlag::RENDER)
+            .unwrap();
+        let glyph = face.glyph();
+
+        character_advances.push(glyph.advance().x);
+    }
+    let average_character_advance = (character_advances.iter().sum::<i64>() as f32
+        / character_advances.len() as f32) as u32
+        >> 6; // Bitshift by 6 to convert in pixels
+
+    let mut line_length_in_characters =
+        ((window_width - margins.left - margins.right) / average_character_advance as f32) as u32;
+    log::trace!("Line length in characters: {}", line_length_in_characters);
+
+    // --------- LOAD OPENGL V3.3 FROM GLFW ---------
+
+    gl::load_with(|procname| glfw.get_proc_address_raw(procname) as *const _);
 
     glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
+
+    // --------- CULLING, CLEAR COLOR AND BLENDING SET ---------
 
     unsafe {
         Enable(CULL_FACE);
@@ -54,6 +130,8 @@ fn main() {
         Enable(BLEND);
         BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
     }
+
+    // --------- SET UP THE TEXT SHADER ---------
 
     let vertex_source = r#"
 #version 330 core
@@ -85,14 +163,16 @@ void main() {
 
     let projection_matrix = glm::ortho(
         0.0,
-        screen_width as f32,
+        window_width as f32,
         0.0,
-        screen_height as f32,
+        window_height as f32,
         -1.0,
         1.0,
     );
     shader.set_mat4("projection", projection_matrix);
     shader.set_int("text", 0);
+
+    // --------- BIND THE VAO AND VBO FOR RENDERING THE TEXT ---------
 
     // Configure VAO/VBO for texture quads
     let vao = Vao::new();
@@ -123,30 +203,19 @@ void main() {
         BindVertexArray(0);
     }
 
-    // Freetype library stuff
-    let library: freetype::Library = freetype::Library::init().unwrap();
-
-    // Load the characters of of the ASCII table
-    let mut text = "This is sample text! 1 ≠ 2 of course, but also ã if you may".to_string();
-    let mut line_length = 40;
-    let mut wrapped_text: Vec<_> = textwrap::wrap(&text, line_length)
-        .iter()
-        .map(|line| line.to_string())
-        .collect();
-    let font_path = Path::new("fonts/NewCMMath-Regular.otf");
-    let face = library.new_face(font_path, 0).unwrap();
-    let font_size = 60;
-    face.set_pixel_sizes(0, font_size).unwrap(); // TODO: `pixel_width` is 0?
+    let mut y_text_position = window_height - font_size - margins.top;
 
     unsafe {
         // Disable the byte-alignment restriction
         PixelStorei(UNPACK_ALIGNMENT, 1);
     }
 
+    // --------- REQUEST TO LOAD THE CHARACTERS IN THE TEXT FROM THE CHOSEN FONT ---------
+
     let mut characters: HashMap<char, Character> = HashMap::new();
 
     for character_code in text.nfc() {
-        if characters.get(&(character_code as char)).is_some() {
+        if characters.get(&character_code).is_some() {
             continue;
         } else {
             face.load_char(character_code as usize, freetype::face::LoadFlag::RENDER)
@@ -171,70 +240,90 @@ void main() {
             characters.insert(character_code as char, character);
         }
     }
-    log::trace!("Characters loaded: {}", characters.len(),);
+    log::trace!("Characters initially loaded: {}", characters.len());
 
     unsafe {
         BindTexture(TEXTURE_2D, 0);
     }
 
+    // --------- START THE RENDER/EVENTS LOOP ---------
+
     let color = Vec3::new(0.0, 0.0, 0.0);
     shader.set_vec3("textColor", color);
-    let x_position = 10.0;
-    let mut y_position: f32 = (screen_height - font_size as i32) as f32;
-    let scale = 1.0;
+
+    let mut cursor_position = (0.0_f32, 0.0);
 
     while !window.should_close() {
-        glfw.wait_events();
-        for (_, event) in glfw::flush_messages(&events) {
+        glfw.poll_events();
+
+        // Filter out all the `WindowEvent::FramebufferSize` except the last one
+        let events = glfw::flush_messages(&events).collect_vec();
+        let mut last_resize_event_index = None;
+
+        for (index, (_, event)) in events.iter().enumerate() {
             match event {
-                // Disable blending when pressing Alt + A
+                glfw::WindowEvent::FramebufferSize(_, _) => last_resize_event_index = Some(index),
+                _ => (),
+            }
+        }
+
+        if let Some(index) = last_resize_event_index {
+            match events.get(index).unwrap() {
+                (_, glfw::WindowEvent::FramebufferSize(width, height)) => {
+                    (window_width, window_height) = (*width as f32, *height as f32);
+                    log::trace!(
+                        "Window resized to pixel size: {:?}",
+                        IVec2::new(*width, *height).as_slice()
+                    );
+
+                    let projection_matrix =
+                        glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
+                    shader.set_mat4("projection", projection_matrix);
+
+                    line_length_in_characters = ((window_width - margins.left - margins.right)
+                        / average_character_advance as f32)
+                        as u32;
+                    y_text_position = window_height - font_size - margins.top;
+
+                    unsafe {
+                        Viewport(0, 0, *width, *height);
+                        Clear(COLOR_BUFFER_BIT);
+                    }
+                    window.swap_buffers()
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        for (_, event) in events {
+            match event {
+                // Disable blending when pressing Ctrl + A
                 glfw::WindowEvent::Key(
                     Key::A,
                     _,
                     action,
                     Modifiers::Super | Modifiers::Control,
                 ) => match action {
-                    Action::Press => {
-                        unsafe {
-                            Disable(BLEND);
-                        }
-                        log::trace!("Blending disabled");
-                    }
-                    Action::Release => {
-                        unsafe {
-                            Enable(BLEND);
-                        }
-                        log::trace!("Blending enabled");
-                    }
-                    _ => (),
+                    Action::Press | Action::Repeat => unsafe {
+                        Disable(BLEND);
+                    },
+                    Action::Release => unsafe {
+                        Enable(BLEND);
+                    },
                 },
-                glfw::WindowEvent::FramebufferSize(width, height) => {
-                    // Make sure the viewport matches the new window dimensions; note that width and
-                    // height will be significantly larger than specified on retina displays.
-                    (screen_width, screen_height) = (width, height);
-                    let projection_matrix = glm::ortho(
-                        0.0,
-                        screen_width as f32,
-                        0.0,
-                        screen_height as f32,
-                        -1.0,
-                        1.0,
-                    );
-                    shader.set_mat4("projection", projection_matrix);
-                    y_position = screen_height as f32 - font_size as f32;
-                    unsafe {
-                        Viewport(0, 0, screen_width, screen_height);
-                        Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT)
-                    }
-                    // window.swap_buffers();
-                }
                 // Receive text input from the keyboard, then append it to the last line
                 glfw::WindowEvent::Char(input_character) => {
                     text.push(input_character);
                     let character_code = input_character.nfc().next().unwrap();
                     if characters.get(&character_code).is_none() {
                         face.load_char(character_code as usize, freetype::face::LoadFlag::RENDER)
-                            .unwrap();
+                            .expect(
+                                format!(
+                                    "unable to find the character '{}' in the font",
+                                    character_code
+                                )
+                                .as_str(),
+                            );
                         let glyph = face.glyph();
 
                         let texture = Texture::new();
@@ -253,25 +342,25 @@ void main() {
                             advance: glyph.advance().x as u32,
                         };
                         characters.insert(character_code, character);
-                        log::trace!("Loaded on the fly the character '{}'", input_character);
                     }
-                    log::trace!("Inserted the character '{}'", input_character);
+                }
+                glfw::WindowEvent::CursorPos(x, y) => {
+                    cursor_position = (x as f32, y as f32);
+                    // log::trace!("Cursor position: {:?}", cursor_position);
                 }
                 // Delete the last character from the last line
                 glfw::WindowEvent::Key(Key::Backspace, _, Action::Repeat | Action::Press, _) => {
-                    match text.pop() {
-                        Some(deleted_character) => {
-                            log::trace!("Deleted the character '{}'", deleted_character);
-                        }
-                        None => {
-                            log::trace!("Attempting to delete, but no character left to delete");
-                        }
-                    }
+                    text.pop();
+                },
+                // Save the opened document when the user presses Ctrl + S
+                glfw::WindowEvent::Key(Key::S, _, Action::Press, Modifiers::Control | Modifiers::Super) => {
+                    log::trace!("Saving the document");
+                    let mut file = File::create(&document_path).unwrap();
+                    file.write_all(text.as_bytes()).unwrap();
                 }
                 // Enter a newline when pressing enter
                 glfw::WindowEvent::Key(Key::Enter, _, Action::Repeat | Action::Press, _) => {
                     text.push('\n');
-                    log::trace!("Inserted a new line");
                 }
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _)
                 | glfw::WindowEvent::Close => {
@@ -284,9 +373,10 @@ void main() {
 
         unsafe {
             // ClearDepth(1.0);
-            // Viewport(100, 0, SCREEN_WIDTH as i32, SCREEN_HEIGHT as i32);
+            // Viewport(0, 0, window_width as i32, window_height as i32);
             Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
         }
+        // window.swap_buffers();
 
         unsafe {
             ActiveTexture(TEXTURE0);
@@ -297,22 +387,22 @@ void main() {
 
         // Wrap the text in a vector of strings, each string representing a line of text
         // Join them but respect the newlines inserted by the user
-        wrapped_text = textwrap::wrap(&text, line_length)
+        let wrapped_text: Vec<_> = textwrap::wrap(&text, line_length_in_characters as usize)
             .iter()
             .map(|line| line.to_string())
             .collect();
 
         for line in wrapped_text.iter() {
-            let mut x = x_position;
+            let mut x = margins.left as f32;
 
             for character in line.chars() {
                 let character = characters.get(&character).unwrap();
 
-                let u = x + character.bearing.x as f32 * scale;
-                let v = y_position - (character.size.y - character.bearing.y) as f32 * scale;
+                let u = x + character.bearing.x as f32;
+                let v = y_text_position - (character.size.y - character.bearing.y) as f32;
 
-                let width = character.size.x as f32 * scale;
-                let height = character.size.y as f32 * scale;
+                let width = character.size.x as f32;
+                let height = character.size.y as f32;
 
                 let vertices = {
                     [
@@ -344,13 +434,13 @@ void main() {
                     DrawArrays(TRIANGLES, 0, 6);
                 }
 
-                x += (character.advance >> 6) as f32 * scale; // Bitshift by 6 to get value in pixels (2^6 = 64)
+                x += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
             }
 
-            y_position -= font_size as f32;
+            y_text_position -= font_size;
         }
 
-        y_position = (screen_height - font_size as i32) as f32;
+        y_text_position = window_height - margins.top - font_size;
 
         unsafe {
             BindVertexArray(0);

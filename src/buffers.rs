@@ -1,6 +1,7 @@
 use std::ffi::c_uint;
 
-use glad_gl::gl::*;
+extern crate gl;
+use gl::*;
 
 pub struct Vbo {
     id: u32,

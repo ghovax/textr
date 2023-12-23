@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use glad_gl::gl::*;
+extern crate gl;
+use gl::*;
 use nalgebra_glm::{Mat4, Vec2, Vec3};
 use std::{
     ffi::{c_uint, CString},
