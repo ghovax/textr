@@ -22,3 +22,13 @@ gl = "0.14.0"
 
 [profile.release]
 debug = true
+
+[package.metadata.bundle]
+name = "Textr"
+identifier = "io.github.ghovax.textr"
+icon = []
+version = "0.1.0"
+resources = []
+
+[profile.dev]
+opt-level = 0

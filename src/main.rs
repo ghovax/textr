@@ -1,9 +1,13 @@
-use std::{collections::HashMap, fs::{File, Permissions}, path::Path, time::Instant};
+use std::{
+    collections::HashMap,
+    fs::{File, Permissions},
+    path::Path,
+    time::Instant,
+};
 
 use buffers::{Texture, Vao, Vbo};
 use chrono::Local;
 // use clap::Parser;
-extern crate gl;
 use gl::*;
 use glfw::{Action, Context, Key, Modifiers, WindowHint};
 use glm::{IVec2, Vec2, Vec3};
@@ -16,6 +20,7 @@ use unicode_normalization::UnicodeNormalization;
 use std::io::Write;
 
 mod buffers;
+mod cursor;
 mod line;
 mod shader;
 
@@ -106,11 +111,10 @@ fn main() {
             .unwrap();
         let glyph = face.glyph();
 
-        character_advances.push(glyph.advance().x);
+        character_advances.push((glyph.advance().x as u32) >> 6);
     }
-    let average_character_advance = (character_advances.iter().sum::<i64>() as f32
-        / character_advances.len() as f32) as u32
-        >> 6; // Bitshift by 6 to convert in pixels
+    let average_character_advance =
+        (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32; // Bitshift by 6 to convert in pixels
 
     let mut line_length_in_characters =
         ((window_width - margins.left - margins.right) / average_character_advance as f32) as u32;
@@ -210,9 +214,33 @@ void main() {
         PixelStorei(UNPACK_ALIGNMENT, 1);
     }
 
-    // --------- REQUEST TO LOAD THE CHARACTERS IN THE TEXT FROM THE CHOSEN FONT ---------
+    // ------ LOAD THE CURSOR CHARACTER ------
 
     let mut characters: HashMap<char, Character> = HashMap::new();
+
+    face.load_char('|' as usize, freetype::face::LoadFlag::RENDER)
+        .unwrap();
+    let glyph = face.glyph();
+
+    let texture = Texture::new();
+    texture.bind();
+    texture.image_2d(
+        glyph.bitmap().width(),
+        glyph.bitmap().rows(),
+        glyph.bitmap().buffer(),
+    );
+    texture.set_parameters(CLAMP_TO_EDGE, CLAMP_TO_EDGE, NEAREST, NEAREST);
+
+    let character = Character {
+        texture,
+        size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
+        bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
+        advance: glyph.advance().x as u32,
+    };
+    characters.insert('|' as char, character);
+    let cursor_character = characters.get(&'|').unwrap().clone();
+
+    // --------- REQUEST TO LOAD THE CHARACTERS IN THE TEXT FROM THE CHOSEN FONT ---------
 
     for character_code in text.nfc() {
         if characters.get(&character_code).is_some() {
@@ -251,7 +279,18 @@ void main() {
     let color = Vec3::new(0.0, 0.0, 0.0);
     shader.set_vec3("textColor", color);
 
-    let mut cursor_position = (0.0_f32, 0.0);
+    let mut mouse_position = Vec2::zeros();
+
+    let mut wrapped_text: Vec<_> = textwrap::wrap(&text, line_length_in_characters as usize)
+        .iter()
+        .map(|line| line.to_string())
+        .collect();
+
+    // Set the cursor position at the end of the wrapped text
+    let mut cursor_position = IVec2::new(
+        wrapped_text.last().unwrap().chars().count() as i32,
+        wrapped_text.len() as i32 - 1,
+    );
 
     while !window.should_close() {
         glfw.poll_events();
@@ -295,7 +334,7 @@ void main() {
             }
         }
 
-        for (_, event) in events {
+        for (_, event) in events.iter() {
             match event {
                 // Disable blending when pressing Ctrl + A
                 glfw::WindowEvent::Key(
@@ -311,49 +350,17 @@ void main() {
                         Enable(BLEND);
                     },
                 },
-                // Receive text input from the keyboard, then append it to the last line
-                glfw::WindowEvent::Char(input_character) => {
-                    text.push(input_character);
-                    let character_code = input_character.nfc().next().unwrap();
-                    if characters.get(&character_code).is_none() {
-                        face.load_char(character_code as usize, freetype::face::LoadFlag::RENDER)
-                            .expect(
-                                format!(
-                                    "unable to find the character '{}' in the font",
-                                    character_code
-                                )
-                                .as_str(),
-                            );
-                        let glyph = face.glyph();
-
-                        let texture = Texture::new();
-                        texture.bind();
-                        texture.image_2d(
-                            glyph.bitmap().width(),
-                            glyph.bitmap().rows(),
-                            glyph.bitmap().buffer(),
-                        );
-                        texture.set_parameters(CLAMP_TO_EDGE, CLAMP_TO_EDGE, NEAREST, NEAREST);
-
-                        let character = Character {
-                            texture,
-                            size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
-                            bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
-                            advance: glyph.advance().x as u32,
-                        };
-                        characters.insert(character_code, character);
-                    }
-                }
                 glfw::WindowEvent::CursorPos(x, y) => {
-                    cursor_position = (x as f32, y as f32);
+                    mouse_position = Vec2::new(*x as f32, *y as f32);
                     // log::trace!("Cursor position: {:?}", cursor_position);
                 }
-                // Delete the last character from the last line
-                glfw::WindowEvent::Key(Key::Backspace, _, Action::Repeat | Action::Press, _) => {
-                    text.pop();
-                },
                 // Save the opened document when the user presses Ctrl + S
-                glfw::WindowEvent::Key(Key::S, _, Action::Press, Modifiers::Control | Modifiers::Super) => {
+                glfw::WindowEvent::Key(
+                    Key::S,
+                    _,
+                    Action::Press,
+                    Modifiers::Control | Modifiers::Super,
+                ) => {
                     log::trace!("Saving the document");
                     let mut file = File::create(&document_path).unwrap();
                     file.write_all(text.as_bytes()).unwrap();
@@ -387,18 +394,107 @@ void main() {
 
         // Wrap the text in a vector of strings, each string representing a line of text
         // Join them but respect the newlines inserted by the user
-        let wrapped_text: Vec<_> = textwrap::wrap(&text, line_length_in_characters as usize)
+        wrapped_text = textwrap::wrap(&text, line_length_in_characters as usize)
             .iter()
             .map(|line| line.to_string())
             .collect();
 
-        for line in wrapped_text.iter() {
-            let mut x = margins.left as f32;
+        let mut line_lengths = wrapped_text.iter().map(|line| line.len());
+        let cursor_index_position = line_lengths
+            .clone()
+            .take(cursor_position.y as usize)
+            .sum::<usize>()
+            + cursor_position.x as usize
+            + cursor_position.y as usize;
 
-            for character in line.chars() {
+        for (_, event) in events.iter() {
+            match event {
+                // Delete the character at the position of the cursor
+                glfw::WindowEvent::Key(Key::Backspace, _, Action::Repeat | Action::Press, _) => {
+                    // We have multiple lines of text, each with their own length. The index is calculated by going
+                    // through the lengths of the lines and summing them.
+
+                    // TODO: This works, but when the line is rearranged, then the cursor isn't brought to the word that eventually
+                    // had to move because of this rearrangement.
+
+                    cursor_position.x -= 1;
+
+                    text.remove(cursor_index_position - 1);
+                }
+                glfw::WindowEvent::Key(Key::Left, _, Action::Repeat | Action::Press, _) => {
+                    if cursor_position.x > 0 {
+                        cursor_position.x -= 1;
+                    }
+                }
+                glfw::WindowEvent::Key(Key::Right, _, Action::Repeat | Action::Press, _) => {
+                    if cursor_position.x
+                        < line_lengths.nth(cursor_position.y as usize).unwrap() as i32
+                    {
+                        cursor_position.x += 1;
+                    }
+                }
+                glfw::WindowEvent::Key(Key::Up, _, Action::Repeat | Action::Press, _) => {
+                    if cursor_position.y > 0 {
+                        cursor_position.y -= 1;
+                    }
+                }
+                glfw::WindowEvent::Key(Key::Down, _, Action::Repeat | Action::Press, _) => {
+                    if cursor_position.y < wrapped_text.len() as i32 - 1 {
+                        cursor_position.y += 1;
+                    }
+                }
+                // Receive text input from the keyboard, then append it to the last line
+                glfw::WindowEvent::Char(input_character) => {
+                    // Insert the input character at the position of the cursor
+                    text.insert(cursor_index_position, *input_character);
+                    cursor_position.x += 1;
+
+                    let character_code = input_character.nfc().next().unwrap();
+                    if characters.get(&character_code).is_none() {
+                        face.load_char(character_code as usize, freetype::face::LoadFlag::RENDER)
+                            .expect(
+                                format!(
+                                    "unable to find the character '{}' in the font",
+                                    character_code
+                                )
+                                .as_str(),
+                            );
+                        let glyph = face.glyph();
+
+                        let texture = Texture::new();
+                        texture.bind();
+                        texture.image_2d(
+                            glyph.bitmap().width(),
+                            glyph.bitmap().rows(),
+                            glyph.bitmap().buffer(),
+                        );
+                        texture.set_parameters(CLAMP_TO_EDGE, CLAMP_TO_EDGE, NEAREST, NEAREST);
+
+                        let character = Character {
+                            texture,
+                            size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
+                            bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
+                            advance: glyph.advance().x as u32,
+                        };
+                        characters.insert(character_code, character);
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        wrapped_text = textwrap::wrap(&text, line_length_in_characters as usize)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
+
+        for (line_index, line) in wrapped_text.iter().enumerate() {
+            let mut x_text_position = margins.left as f32;
+
+            for (character_index, character) in line.chars().enumerate() {
                 let character = characters.get(&character).unwrap();
 
-                let u = x + character.bearing.x as f32;
+                let u = x_text_position + character.bearing.x as f32;
                 let v = y_text_position - (character.size.y - character.bearing.y) as f32;
 
                 let width = character.size.x as f32;
@@ -434,7 +530,51 @@ void main() {
                     DrawArrays(TRIANGLES, 0, 6);
                 }
 
-                x += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
+                // ------ ALGORITHM FOR FINDING THE CURSOR POSITION AND DRAWING IT ------
+
+                let position_in_text = IVec2::new(character_index as i32, line_index as i32);
+                if position_in_text == cursor_position {
+                    // When the position in the text matches the one of the cursor
+
+                    let u = x_text_position - character.bearing.x as f32;
+                    let v = y_text_position
+                        - (cursor_character.size.y - cursor_character.bearing.y) as f32;
+
+                    let width = cursor_character.size.x as f32;
+                    let height = cursor_character.size.y as f32;
+
+                    let vertices = {
+                        [
+                            [u, v + height, 0.0, 0.0],
+                            [u, v, 0.0, 1.0],
+                            [u + width, v, 1.0, 1.0],
+                            [u, v + height, 0.0, 0.0],
+                            [u + width, v, 1.0, 1.0],
+                            [u + width, v + height, 1.0, 0.0],
+                        ]
+                    };
+
+                    cursor_character.texture.bind();
+                    vbo.bind();
+                    unsafe {
+                        BufferSubData(
+                            ARRAY_BUFFER,
+                            0,
+                            (vertices.len() * 4 * std::mem::size_of::<f32>()) as isize,
+                            vertices.as_ptr() as *const _,
+                        );
+                    }
+
+                    unsafe {
+                        BindBuffer(ARRAY_BUFFER, 0);
+                    }
+
+                    unsafe {
+                        DrawArrays(TRIANGLES, 0, 6);
+                    }
+                }
+
+                x_text_position += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
             }
 
             y_text_position -= font_size;

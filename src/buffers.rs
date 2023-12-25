@@ -1,6 +1,5 @@
 use std::ffi::c_uint;
 
-extern crate gl;
 use gl::*;
 
 pub struct Vbo {

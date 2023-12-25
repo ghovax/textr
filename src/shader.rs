@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-extern crate gl;
 use gl::*;
 use nalgebra_glm::{Mat4, Vec2, Vec3};
 use std::{
