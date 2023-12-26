@@ -5,34 +5,24 @@ use std::{
     time::Instant,
 };
 
-use buffers::{Texture, Vao, Vbo};
 use chrono::Local;
 // use clap::Parser;
-use gl::*;
-use glfw::{Action, Context, Key, Modifiers, WindowHint};
 use glm::{IVec2, Vec2, Vec3};
+use glow::*;
+use glow::{HasContext, CULL_FACE_MODE};
 use itertools::Itertools;
 use log::LevelFilter;
 use nalgebra_glm as glm;
-use shader::Shader;
+use sdl2::{
+    event::Event,
+    keyboard::{Keycode, Mod},
+};
+use std::io::Write;
 use unicode_normalization::UnicodeNormalization;
 
-use std::io::Write;
-
-mod buffers;
-mod cursor;
 mod line;
-mod shader;
 
 use crate::line::Margins;
-
-fn framebuffer_size_callback(window: &mut glfw::Window, width: i32, height: i32) {
-    unsafe {
-        // gl::Viewport(0, 0, width, height);
-        Clear(COLOR_BUFFER_BIT)
-    }
-    window.swap_buffers()
-}
 
 fn main() {
     // Log file with the current time and date
@@ -54,34 +44,42 @@ fn main() {
 
     // --------- INITIALIZE THE GLFW WINDOW ---------
 
-    let mut glfw = glfw::init(glfw::log_errors).unwrap();
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
 
-    glfw.window_hint(WindowHint::ContextVersion(3, 3));
-    glfw.window_hint(WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
-    glfw.window_hint(WindowHint::RefreshRate(Some(60)));
-    glfw.window_hint(WindowHint::Samples(Some(4)));
+    let gl_attr = video.gl_attr();
+    gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
 
-    if cfg!(target_os = "macos") {
-        glfw.window_hint(WindowHint::CocoaRetinaFramebuffer(true));
-        glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
-    }
+    gl_attr.set_context_version(3, 3);
+    gl_attr.set_context_flags().forward_compatible().set();
+    gl_attr.set_accelerated_visual(true);
 
-    let (mut window, events) = glfw
-        .create_window(800, 600, &document_path, glfw::WindowMode::Windowed)
-        .expect("failed to create GLFW window");
+    // gl_attr.set_multisample_buffers(1);
+    // gl_attr.set_multisample_samples(4);
 
-    window.make_current();
-    window.set_resizable(true);
-    window.set_all_polling(true);
-    window.set_framebuffer_size_callback(framebuffer_size_callback);
-    window.set_size_limits(Some(480), Some(320), None, None);
+    let mut window = video
+        .window(document_path, 1024, 769)
+        .opengl()
+        .resizable()
+        .allow_highdpi()
+        .build()
+        .unwrap();
+    window.set_minimum_size(480, 320).unwrap();
+
+    // --------- LOAD OPENGL V3.3 FROM GLFW ---------
+
+    let gl_context = window.gl_create_context().unwrap();
+    let gl = unsafe {
+        glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
+    };
+    let mut event_loop = sdl.event_pump().unwrap();
 
     // --------- LOAD THE LIBRARY FREETYPE FOR THE GLYPHS ---------
 
     let library: freetype::Library = freetype::Library::init().unwrap();
 
     // Load the text from the file path given
-    let mut text = std::fs::read_to_string(&document_path).unwrap();
+    let mut text = std::fs::read_to_string(document_path).unwrap();
     log::trace!("Imported the text: {:?}", text);
     let face = library.new_face(font_path, 0).unwrap();
 
@@ -97,7 +95,7 @@ fn main() {
         right: 30.0,
     };
 
-    let framebuffer_size = window.get_framebuffer_size();
+    let framebuffer_size = window.drawable_size();
     let (mut window_width, mut window_height) =
         (framebuffer_size.0 as f32, framebuffer_size.1 as f32);
 
@@ -120,19 +118,13 @@ fn main() {
         ((window_width - margins.left - margins.right) / average_character_advance as f32) as u32;
     log::trace!("Line length in characters: {}", line_length_in_characters);
 
-    // --------- LOAD OPENGL V3.3 FROM GLFW ---------
-
-    gl::load_with(|procname| glfw.get_proc_address_raw(procname) as *const _);
-
-    glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
-
     // --------- CULLING, CLEAR COLOR AND BLENDING SET ---------
 
     unsafe {
-        Enable(CULL_FACE);
-        ClearColor(1.0, 1.0, 1.0, 1.0);
-        Enable(BLEND);
-        BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
+        gl.enable(CULL_FACE);
+        gl.clear_color(1.0, 1.0, 1.0, 1.0);
+        gl.enable(BLEND);
+        gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
     }
 
     // --------- SET UP THE TEXT SHADER ---------
@@ -162,56 +154,87 @@ void main() {
     color = vec4(textColor, 1.0) * sampled;
 }
 "#;
-    let shader = Shader::new_from_source(vertex_source, fragment_source);
-    shader.use_program();
+    let program = unsafe {
+        let program = gl.create_program().unwrap();
+        let mut shaders = Vec::with_capacity(2);
+        for (shader_type, shader_source) in [
+            (VERTEX_SHADER, vertex_source),
+            (FRAGMENT_SHADER, fragment_source),
+        ] {
+            let shader = gl.create_shader(shader_type).unwrap();
+            gl.shader_source(shader, &shader_source);
+            gl.compile_shader(shader);
+            if !gl.get_shader_compile_status(shader) {
+                panic!("{}", gl.get_shader_info_log(shader));
+            }
+            gl.attach_shader(program, shader);
+            shaders.push(shader);
+        }
 
-    let projection_matrix = glm::ortho(
-        0.0,
-        window_width as f32,
-        0.0,
-        window_height as f32,
-        -1.0,
-        1.0,
-    );
-    shader.set_mat4("projection", projection_matrix);
-    shader.set_int("text", 0);
+        gl.link_program(program);
+        if !gl.get_program_link_status(program) {
+            panic!("{}", gl.get_program_info_log(program));
+        }
+
+        for shader in shaders {
+            gl.detach_shader(program, shader);
+            gl.delete_shader(shader);
+        }
+
+        program
+    };
+    unsafe {
+        gl.use_program(Some(program));
+    }
 
     // --------- BIND THE VAO AND VBO FOR RENDERING THE TEXT ---------
 
-    // Configure VAO/VBO for texture quads
-    let vao = Vao::new();
-    vao.bind();
+    let vao = unsafe {
+        let vao = gl.create_vertex_array().unwrap();
+        gl.bind_vertex_array(Some(vao));
 
-    let vbo = Vbo::new(0);
-    vbo.bind();
+        vao
+    };
+
+    let vbo = unsafe {
+        let vbo = gl.create_buffer().unwrap();
+        gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
+        // TODO: An error might lay in the next call
+        let empty_buffer_data: &[u8] =
+            core::slice::from_raw_parts(&[] as *const _, 6 * 4 * std::mem::size_of::<f32>());
+        gl.buffer_data_u8_slice(ARRAY_BUFFER, empty_buffer_data, DYNAMIC_DRAW);
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 4, FLOAT, false, 4 * std::mem::size_of::<f32>() as i32, 0);
+
+        vbo
+    };
+
+    // TODO: What does this do?
     unsafe {
-        BufferData(
-            ARRAY_BUFFER,
-            (6 * 4 * std::mem::size_of::<f32>()) as isize,
-            std::ptr::null(),
-            DYNAMIC_DRAW,
-        );
-        EnableVertexAttribArray(0);
-        VertexAttribPointer(
-            0,
-            4,
-            FLOAT,
-            FALSE,
-            (4 * std::mem::size_of::<f32>()) as i32,
-            std::ptr::null(),
+        gl.bind_buffer(ARRAY_BUFFER, None);
+        gl.bind_vertex_array(None);
+    }
+
+    let projection_matrix = glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
+    unsafe {
+        let uniform_location = gl.get_uniform_location(program, "projection");
+        gl.uniform_matrix_4_f32_slice(
+            uniform_location.as_ref(),
+            false,
+            projection_matrix.as_slice(),
         );
     }
 
     unsafe {
-        BindBuffer(ARRAY_BUFFER, 0);
-        BindVertexArray(0);
+        let uniform_location = gl.get_uniform_location(program, "text");
+        gl.uniform_1_i32(uniform_location.as_ref(), 0);
     }
 
     let mut y_text_position = window_height - font_size - margins.top;
 
     unsafe {
         // Disable the byte-alignment restriction
-        PixelStorei(UNPACK_ALIGNMENT, 1);
+        gl.pixel_store_i32(UNPACK_ALIGNMENT, 1);
     }
 
     // ------ LOAD THE CURSOR CHARACTER ------
@@ -222,14 +245,33 @@ void main() {
         .unwrap();
     let glyph = face.glyph();
 
-    let texture = Texture::new();
-    texture.bind();
-    texture.image_2d(
-        glyph.bitmap().width(),
-        glyph.bitmap().rows(),
-        glyph.bitmap().buffer(),
-    );
-    texture.set_parameters(CLAMP_TO_EDGE, CLAMP_TO_EDGE, NEAREST, NEAREST);
+    unsafe fn setup_glyph_texture(gl: &glow::Context, glyph: &freetype::GlyphSlot) {
+        gl.tex_image_2d(
+            TEXTURE_2D,
+            0,
+            RED as i32, // TODO: Why `RED`?
+            glyph.bitmap().width(),
+            glyph.bitmap().rows(),
+            0,
+            RED,
+            UNSIGNED_BYTE,
+            Some(glyph.bitmap().buffer()),
+        );
+        // Set the texture parameters
+        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as i32);
+        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_T, CLAMP_TO_EDGE as i32);
+        // Set the texture min and mag filters
+        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, NEAREST as i32);
+        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, NEAREST as i32);
+    }
+
+    let texture = unsafe {
+        let texture = gl.create_texture().unwrap();
+        gl.bind_texture(TEXTURE_2D, Some(texture));
+        setup_glyph_texture(&gl, glyph);
+
+        texture
+    };
 
     let character = Character {
         texture,
@@ -237,7 +279,7 @@ void main() {
         bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
         advance: glyph.advance().x as u32,
     };
-    characters.insert('|' as char, character);
+    characters.insert('|', character);
     let cursor_character = characters.get(&'|').unwrap().clone();
 
     // --------- REQUEST TO LOAD THE CHARACTERS IN THE TEXT FROM THE CHOSEN FONT ---------
@@ -250,14 +292,13 @@ void main() {
                 .unwrap();
             let glyph = face.glyph();
 
-            let texture = Texture::new();
-            texture.bind();
-            texture.image_2d(
-                glyph.bitmap().width(),
-                glyph.bitmap().rows(),
-                glyph.bitmap().buffer(),
-            );
-            texture.set_parameters(CLAMP_TO_EDGE, CLAMP_TO_EDGE, NEAREST, NEAREST);
+            let texture = unsafe {
+                let texture = gl.create_texture().unwrap();
+                gl.bind_texture(TEXTURE_2D, Some(texture));
+                setup_glyph_texture(&gl, glyph);
+
+                texture
+            };
 
             let character = Character {
                 texture,
@@ -265,19 +306,22 @@ void main() {
                 bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
                 advance: glyph.advance().x as u32,
             };
-            characters.insert(character_code as char, character);
+            characters.insert(character_code, character);
         }
     }
     log::trace!("Characters initially loaded: {}", characters.len());
 
     unsafe {
-        BindTexture(TEXTURE_2D, 0);
+        gl.bind_texture(TEXTURE_2D, None);
     }
 
     // --------- START THE RENDER/EVENTS LOOP ---------
 
     let color = Vec3::new(0.0, 0.0, 0.0);
-    shader.set_vec3("textColor", color);
+    unsafe {
+        let uniform_location = gl.get_uniform_location(program, "textColor");
+        gl.uniform_3_f32(uniform_location.as_ref(), color.x, color.y, color.z);
+    }
 
     let mut mouse_position = Vec2::zeros();
 
@@ -292,103 +336,93 @@ void main() {
         wrapped_text.len() as i32 - 1,
     );
 
-    while !window.should_close() {
-        glfw.poll_events();
-
-        // Filter out all the `WindowEvent::FramebufferSize` except the last one
-        let events = glfw::flush_messages(&events).collect_vec();
-        let mut last_resize_event_index = None;
-
-        for (index, (_, event)) in events.iter().enumerate() {
+    'render_loop: loop {
+        let mut events = Vec::new();
+        for event in event_loop.poll_iter() {
             match event {
-                glfw::WindowEvent::FramebufferSize(_, _) => last_resize_event_index = Some(index),
-                _ => (),
-            }
-        }
+                Event::Quit { .. } => {
+                    break 'render_loop;
+                }
+                sdl2::event::Event::Window {
+                    win_event: window_event,
+                    ..
+                } => match window_event {
+                    sdl2::event::WindowEvent::Resized(width, height) => {
+                        (window_width, window_height) = (2.0 * width as f32, 2.0 * height as f32);
 
-        if let Some(index) = last_resize_event_index {
-            match events.get(index).unwrap() {
-                (_, glfw::WindowEvent::FramebufferSize(width, height)) => {
-                    (window_width, window_height) = (*width as f32, *height as f32);
-                    log::trace!(
-                        "Window resized to pixel size: {:?}",
-                        IVec2::new(*width, *height).as_slice()
-                    );
+                        let projection_matrix =
+                            glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
+                        unsafe {
+                            let uniform_location = gl.get_uniform_location(program, "projection");
+                            gl.uniform_matrix_4_f32_slice(
+                                uniform_location.as_ref(),
+                                false,
+                                projection_matrix.as_slice(),
+                            );
+                        }
 
-                    let projection_matrix =
-                        glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
-                    shader.set_mat4("projection", projection_matrix);
+                        line_length_in_characters = ((window_width - margins.left - margins.right)
+                            / average_character_advance as f32)
+                            as u32;
+                        y_text_position = window_height - font_size - margins.top;
 
-                    line_length_in_characters = ((window_width - margins.left - margins.right)
-                        / average_character_advance as f32)
-                        as u32;
-                    y_text_position = window_height - font_size - margins.top;
+                        unsafe {
+                            gl.viewport(0, 0, window_width as i32, window_height as i32);
+                            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+                        }
+                        window.gl_swap_window();
 
-                    unsafe {
-                        Viewport(0, 0, *width, *height);
-                        Clear(COLOR_BUFFER_BIT);
+                        log::trace!(
+                            "Window resized to pixel size: {:?}",
+                            IVec2::new(window_width as i32, window_height as i32).as_slice()
+                        );
                     }
-                    window.swap_buffers()
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        for (_, event) in events.iter() {
-            match event {
-                // Disable blending when pressing Ctrl + A
-                glfw::WindowEvent::Key(
-                    Key::A,
-                    _,
-                    action,
-                    Modifiers::Super | Modifiers::Control,
-                ) => match action {
-                    Action::Press | Action::Repeat => unsafe {
-                        Disable(BLEND);
-                    },
-                    Action::Release => unsafe {
-                        Enable(BLEND);
-                    },
+                    _ => (),
                 },
-                glfw::WindowEvent::CursorPos(x, y) => {
-                    mouse_position = Vec2::new(*x as f32, *y as f32);
-                    // log::trace!("Cursor position: {:?}", cursor_position);
-                }
+                // Enable/disable blending when pressing Ctrl + A or Cmd + A
+                Event::KeyDown {
+                    keycode: Some(Keycode::A),
+                    keymod: Mod::LCTRLMOD,
+                    ..
+                } => unsafe { gl.disable(BLEND) },
+                Event::KeyUp {
+                    keycode: Some(Keycode::A),
+                    keymod: Mod::LCTRLMOD,
+                    ..
+                } => unsafe { gl.enable(BLEND) },
                 // Save the opened document when the user presses Ctrl + S
-                glfw::WindowEvent::Key(
-                    Key::S,
-                    _,
-                    Action::Press,
-                    Modifiers::Control | Modifiers::Super,
-                ) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::S),
+                    keymod: Mod::LCTRLMOD,
+                    ..
+                } => {
                     log::trace!("Saving the document");
-                    let mut file = File::create(&document_path).unwrap();
+                    let mut file = File::create(document_path).unwrap();
                     file.write_all(text.as_bytes()).unwrap();
                 }
                 // Enter a newline when pressing enter
-                glfw::WindowEvent::Key(Key::Enter, _, Action::Repeat | Action::Press, _) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Return),
+                    ..
+                } => {
                     text.push('\n');
-                }
-                glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _)
-                | glfw::WindowEvent::Close => {
-                    window.set_should_close(true);
-                    log::trace!("Requesting to close the window");
                 }
                 _ => (),
             }
+            events.push(event);
         }
 
         unsafe {
             // ClearDepth(1.0);
             // Viewport(0, 0, window_width as i32, window_height as i32);
-            Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
         }
         // window.swap_buffers();
 
         unsafe {
-            ActiveTexture(TEXTURE0);
+            gl.active_texture(TEXTURE0);
+            gl.bind_vertex_array(Some(vao));
         }
-        vao.bind();
 
         // ------ ALGORITHM FOR SPLITTING THE TEXT INTO MULTIPLE LINES ------
 
@@ -407,10 +441,13 @@ void main() {
             + cursor_position.x as usize
             + cursor_position.y as usize;
 
-        for (_, event) in events.iter() {
+        for event in events {
             match event {
                 // Delete the character at the position of the cursor
-                glfw::WindowEvent::Key(Key::Backspace, _, Action::Repeat | Action::Press, _) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Backspace),
+                    ..
+                } => {
                     // We have multiple lines of text, each with their own length. The index is calculated by going
                     // through the lengths of the lines and summing them.
 
@@ -421,54 +458,67 @@ void main() {
 
                     text.remove(cursor_index_position - 1);
                 }
-                glfw::WindowEvent::Key(Key::Left, _, Action::Repeat | Action::Press, _) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => {
                     if cursor_position.x > 0 {
                         cursor_position.x -= 1;
                     }
                 }
-                glfw::WindowEvent::Key(Key::Right, _, Action::Repeat | Action::Press, _) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => {
                     if cursor_position.x
                         < line_lengths.nth(cursor_position.y as usize).unwrap() as i32
                     {
                         cursor_position.x += 1;
                     }
                 }
-                glfw::WindowEvent::Key(Key::Up, _, Action::Repeat | Action::Press, _) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => {
                     if cursor_position.y > 0 {
                         cursor_position.y -= 1;
                     }
                 }
-                glfw::WindowEvent::Key(Key::Down, _, Action::Repeat | Action::Press, _) => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => {
                     if cursor_position.y < wrapped_text.len() as i32 - 1 {
                         cursor_position.y += 1;
                     }
                 }
                 // Receive text input from the keyboard, then append it to the last line
-                glfw::WindowEvent::Char(input_character) => {
+                Event::TextInput {
+                    text: input_text, ..
+                } => {
                     // Insert the input character at the position of the cursor
-                    text.insert(cursor_index_position, *input_character);
+                    let input_character = input_text.chars().next().unwrap();
+                    text.insert(cursor_index_position, input_character);
                     cursor_position.x += 1;
 
                     let character_code = input_character.nfc().next().unwrap();
                     if characters.get(&character_code).is_none() {
                         face.load_char(character_code as usize, freetype::face::LoadFlag::RENDER)
-                            .expect(
-                                format!(
+                            .unwrap_or_else(|_| {
+                                panic!(
                                     "unable to find the character '{}' in the font",
                                     character_code
                                 )
-                                .as_str(),
-                            );
+                            });
                         let glyph = face.glyph();
 
-                        let texture = Texture::new();
-                        texture.bind();
-                        texture.image_2d(
-                            glyph.bitmap().width(),
-                            glyph.bitmap().rows(),
-                            glyph.bitmap().buffer(),
-                        );
-                        texture.set_parameters(CLAMP_TO_EDGE, CLAMP_TO_EDGE, NEAREST, NEAREST);
+                        let texture = unsafe {
+                            let texture = gl.create_texture().unwrap();
+                            gl.bind_texture(TEXTURE_2D, Some(texture));
+                            setup_glyph_texture(&gl, glyph);
+
+                            texture
+                        };
 
                         let character = Character {
                             texture,
@@ -489,7 +539,7 @@ void main() {
             .collect();
 
         for (line_index, line) in wrapped_text.iter().enumerate() {
-            let mut x_text_position = margins.left as f32;
+            let mut x_text_position = margins.left;
 
             for (character_index, character) in line.chars().enumerate() {
                 let character = characters.get(&character).unwrap();
@@ -511,23 +561,21 @@ void main() {
                     ]
                 };
 
-                character.texture.bind();
-                vbo.bind();
                 unsafe {
-                    BufferSubData(
-                        ARRAY_BUFFER,
-                        0,
-                        (vertices.len() * 4 * std::mem::size_of::<f32>()) as isize,
+                    gl.bind_texture(TEXTURE_2D, Some(character.texture));
+
+                    gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
+                    let vertices_slice = std::slice::from_raw_parts(
                         vertices.as_ptr() as *const _,
+                        vertices.len() * 4 * std::mem::size_of::<f32>(),
                     );
+                    gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
                 }
 
                 unsafe {
-                    BindBuffer(ARRAY_BUFFER, 0);
-                }
+                    gl.bind_buffer(ARRAY_BUFFER, None);
 
-                unsafe {
-                    DrawArrays(TRIANGLES, 0, 6);
+                    gl.draw_arrays(TRIANGLES, 0, 6);
                 }
 
                 // ------ ALGORITHM FOR FINDING THE CURSOR POSITION AND DRAWING IT ------
@@ -554,23 +602,21 @@ void main() {
                         ]
                     };
 
-                    cursor_character.texture.bind();
-                    vbo.bind();
                     unsafe {
-                        BufferSubData(
-                            ARRAY_BUFFER,
-                            0,
-                            (vertices.len() * 4 * std::mem::size_of::<f32>()) as isize,
+                        gl.bind_texture(TEXTURE_2D, Some(cursor_character.texture));
+
+                        gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
+                        let vertices_slice = std::slice::from_raw_parts(
                             vertices.as_ptr() as *const _,
+                            vertices.len() * 4 * std::mem::size_of::<f32>(),
                         );
+                        gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
                     }
 
                     unsafe {
-                        BindBuffer(ARRAY_BUFFER, 0);
-                    }
+                        gl.bind_buffer(ARRAY_BUFFER, None);
 
-                    unsafe {
-                        DrawArrays(TRIANGLES, 0, 6);
+                        gl.draw_arrays(TRIANGLES, 0, 6);
                     }
                 }
 
@@ -583,25 +629,25 @@ void main() {
         y_text_position = window_height - margins.top - font_size;
 
         unsafe {
-            BindVertexArray(0);
-            BindTexture(TEXTURE_2D, 0);
+            gl.bind_vertex_array(None);
+            gl.bind_texture(TEXTURE_2D, None);
         }
 
         unsafe {
-            let error_code = GetError();
+            let error_code = gl.get_error();
             if error_code != 0 {
                 log::error!("OpenGL error code: {}", error_code);
             }
         }
 
-        window.swap_buffers();
+        window.gl_swap_window();
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Character {
-    texture: Texture, // ID handle of the glyph texture
-    size: IVec2,      // Size of glyph
-    bearing: IVec2,   // Offset from baseline to left/top of glyph
-    advance: u32,     // Offset to advance to the next glyph
+    texture: NativeTexture, // ID handle of the glyph texture
+    size: IVec2,            // Size of glyph
+    bearing: IVec2,         // Offset from baseline to left/top of glyph
+    advance: u32,           // Offset to advance to the next glyph
 }
