@@ -17,20 +17,16 @@ chrono = "0.4.31"
 env_logger = "0.10.1"
 itertools = "0.12.0"
 color-art = "0.3.7"
-glow = { version = "0.13.0", features = ["log", "debug_automatic_glGetError"] }
+glow = { version = "0.13.0" }
 # gl = "0.14.0"
 regex = "1.10.2"
-
-[dependencies.sdl2]
-version = "0.36.0"
-# features = ["use_mac_framework"]
-git = "https://github.com/AngryLawyer/rust-sdl2"
+sdl2 = { version = "0.36.0", features = ["bundled"] }
 
 [profile.release]
 debug = true
 
 [package.metadata.bundle]
-name = "Textr"
+name = "TeXtr"
 identifier = "io.github.ghovax.textr"
 icon = []
 version = "0.1.0"

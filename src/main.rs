@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::File, time::Instant};
 
 use chrono::Local;
 // use clap::Parser;
@@ -44,6 +44,7 @@ fn main() {
     // Initialize the GLFW window
 
     let sdl = sdl2::init().unwrap();
+    let event_subsystem = sdl.event().unwrap();
     let video = sdl.video().unwrap();
 
     let gl_attributes = video.gl_attr();
@@ -57,7 +58,7 @@ fn main() {
     let mut window = video
         .window(document_path, 1024, 769)
         .opengl()
-        // .resizable()
+        .resizable()
         .allow_highdpi()
         .build()
         .unwrap();
@@ -123,7 +124,7 @@ fn main() {
     // Set the culling, clear color and blending options
 
     unsafe {
-        // gl.enable(CULL_FACE);
+        gl.enable(CULL_FACE);
         gl.clear_color(1.0, 1.0, 1.0, 1.0);
 
         gl.enable(BLEND);
@@ -303,6 +304,36 @@ void main() {
 
     // Start the events loop...
 
+    let _resize_event_watch = event_subsystem.add_event_watch(|event| match event {
+        sdl2::event::Event::Window {
+            win_event: window_event,
+            ..
+        } => match window_event {
+            sdl2::event::WindowEvent::Resized(width, height) => {
+                let (window_width, window_height) = (2.0 * width as f32, 2.0 * height as f32);
+
+                let projection_matrix =
+                    glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
+                unsafe {
+                    let uniform_location = gl.get_uniform_location(program, "projection");
+                    gl.uniform_matrix_4_f32_slice(
+                        uniform_location.as_ref(),
+                        false,
+                        projection_matrix.as_slice(),
+                    );
+                }
+
+                unsafe {
+                    gl.viewport(0, 0, window_width as i32, window_height as i32);
+                    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+                }
+                window.gl_swap_window();
+            }
+            _ => (),
+        },
+        _ => (),
+    });
+
     'events_loop: loop {
         let mut events = Vec::new();
         for event in event_loop.wait_timeout_iter(16) {
@@ -327,10 +358,10 @@ void main() {
                     keymod: Mod::LCTRLMOD,
                     ..
                 } => {
-                    log::trace!("Saving the document");
                     // If the file creation is unsuccessful, then the user will lose their data
                     let mut file = File::create(document_path).unwrap();
                     file.write_all(text.as_bytes()).unwrap();
+                    log::trace!("The document has been successfully saved");
                 }
                 _ => (),
             }
@@ -372,12 +403,7 @@ void main() {
                         gl.viewport(0, 0, window_width as i32, window_height as i32);
                         gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
                     }
-                    window.gl_swap_window();
-
-                    log::trace!(
-                        "Window resized to pixel size: {:?}",
-                        IVec2::new(window_width as i32, window_height as i32).as_slice()
-                    );
+                    // window.gl_swap_window();
                 }
                 _ => (),
             },
@@ -403,7 +429,9 @@ void main() {
         for event in events {
             match event {
                 Event::KeyDown {
-                    keycode: Some(key), ..
+                    keycode: Some(key),
+                    keymod: Mod::NOMOD,
+                    ..
                 } => {
                     match key {
                         // Delete the character at the position of the caret
@@ -494,6 +522,7 @@ void main() {
         }
 
         // ...then, for each line in the wrapped text...
+        let mut characters_vertices = Vec::new();
         for (line_index, line) in wrapped_text.iter().enumerate() {
             let mut horizontal_origin = margins.left;
 
@@ -507,15 +536,27 @@ void main() {
                 let width = character.size.x as f32;
                 let height = character.size.y as f32;
 
-                draw_character(
-                    &gl,
-                    x,
-                    y,
-                    width,
-                    height,
-                    character.texture,
-                    vbo,
-                );
+                let vertices = {
+                    [
+                        [x, y + height, 0.0, 0.0],
+                        [x, y, 0.0, 1.0],
+                        [x + width, y, 1.0, 1.0],
+                        [x, y + height, 0.0, 0.0],
+                        [x + width, y, 1.0, 1.0],
+                        [x + width, y + height, 1.0, 0.0],
+                    ]
+                };
+                characters_vertices.push(vertices);
+
+                unsafe {
+                    gl.bind_texture(TEXTURE_2D, Some(character.texture));
+
+                    let vertices_slice = std::slice::from_raw_parts(
+                        vertices.as_ptr() as *const _,
+                        vertices.len() * 4 * std::mem::size_of::<f32>(),
+                    );
+                    gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
+                }
 
                 // ...and then, eventually, draw the caret as well at its position
                 let position_in_text = IVec2::new(character_index as i32, line_index as i32);
@@ -528,15 +569,35 @@ void main() {
                     let width = caret.character.size.x as f32;
                     let height = caret.character.size.y as f32;
 
-                    draw_character(
-                        &gl,
-                        x,
-                        y,
-                        width,
-                        height,
-                        caret.character.texture,
-                        vbo,
-                    )
+                    let vertices = {
+                        [
+                            [x, y + height, 0.0, 0.0],
+                            [x, y, 0.0, 1.0],
+                            [x + width, y, 1.0, 1.0],
+                            [x, y + height, 0.0, 0.0],
+                            [x + width, y, 1.0, 1.0],
+                            [x + width, y + height, 1.0, 0.0],
+                        ]
+                    };
+                    characters_vertices.push(vertices);
+
+                    unsafe {
+                        gl.bind_texture(TEXTURE_2D, Some(caret.character.texture));
+
+                        let vertices_slice = std::slice::from_raw_parts(
+                            vertices.as_ptr() as *const _,
+                            vertices.len() * 4 * std::mem::size_of::<f32>(),
+                        );
+                        gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
+                    }
+
+                    unsafe {
+                        gl.draw_arrays(TRIANGLES, 0, 6);
+                    }
+                }
+
+                unsafe {
+                    gl.draw_arrays(TRIANGLES, 0, 6 * line.len() as i32);
                 }
 
                 // Move the origin by the character advance in order to draw the characters side-to-side.
@@ -625,40 +686,4 @@ fn load_character(
         advance: glyph.advance().x as u32,
     };
     characters.insert(normalized_utf8_character, character);
-}
-
-fn draw_character(
-    gl: &glow::Context,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    texture: NativeTexture,
-    vbo: NativeBuffer,
-) {
-    let vertices = {
-        [
-            [x, y + height, 0.0, 0.0],
-            [x, y, 0.0, 1.0],
-            [x + width, y, 1.0, 1.0],
-            [x, y + height, 0.0, 0.0],
-            [x + width, y, 1.0, 1.0],
-            [x + width, y + height, 1.0, 0.0],
-        ]
-    };
-
-    unsafe {
-        gl.bind_texture(TEXTURE_2D, Some(texture));
-
-        gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
-        let vertices_slice = std::slice::from_raw_parts(
-            vertices.as_ptr() as *const _,
-            vertices.len() * 4 * std::mem::size_of::<f32>(),
-        );
-        gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
-    }
-
-    unsafe {
-        gl.draw_arrays(TRIANGLES, 0, 6);
-    }
 }

@@ -1,4 +1,4 @@
-# Textr
+# TeXtr
 
 Text rendering app with a custom-made pagination. Made in Rust with love. 🦀
 
