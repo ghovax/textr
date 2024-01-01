@@ -41,7 +41,7 @@ fn main() {
         font_path
     );
 
-    // --------- INITIALIZE THE GLFW WINDOW ---------
+    // Initialize the GLFW window
 
     let sdl = sdl2::init().unwrap();
     let video = sdl.video().unwrap();
@@ -63,7 +63,7 @@ fn main() {
         .unwrap();
     window.set_minimum_size(480, 320).unwrap();
 
-    // --------- LOAD OPENGL V3.3 FROM GLFW ---------
+    // Load OpenGL v3.3 from GLFW
 
     let _gl_context = window.gl_create_context().unwrap();
     let gl = unsafe {
@@ -71,7 +71,7 @@ fn main() {
     };
     let mut event_loop = sdl.event_pump().unwrap();
 
-    // --------- LOAD THE LIBRARY FREETYPE FOR THE GLYPHS ---------
+    // Load the library Freetype for using the font glyphs
 
     let library: freetype::Library = freetype::Library::init().unwrap();
 
@@ -80,7 +80,7 @@ fn main() {
     log::trace!("Imported the text: {:?}", text);
     let face = library.new_face(font_path, 0).unwrap();
 
-    // --------- CALCULATE THE LINE LENGTH BASED ON AVERAGE CHARACTER ADVANCE ---------
+    // Calculate the line length based on the average character advance
 
     let font_size = 50.0; // Arbitrary unit of measurement
     face.set_pixel_sizes(0, font_size as u32).unwrap(); // TODO: `pixel_width` is 0? Probably it means "take the default one"
@@ -96,37 +96,43 @@ fn main() {
     let (mut window_width, mut window_height) =
         (framebuffer_size.0 as f32, framebuffer_size.1 as f32);
 
+    let mut line_height = window_height - font_size - margins.top;
+
     let mut character_advances = Vec::new();
-    for character_nfc in
+    for normalized_utf8_character in
         r#"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
             .chars()
             .nfc()
     {
-        face.load_char(character_nfc as usize, freetype::face::LoadFlag::RENDER)
-            .unwrap();
+        face.load_char(
+            normalized_utf8_character as usize,
+            freetype::face::LoadFlag::RENDER,
+        )
+        .unwrap();
         let glyph = face.glyph();
 
-        character_advances.push((glyph.advance().x as u32) >> 6);
+        character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
     }
     let average_character_advance =
-        (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32; // Bitshift by 6 to convert in pixels
+        (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32;
 
-    let mut line_length_in_characters =
+    let mut average_line_length =
         ((window_width - margins.left - margins.right) / average_character_advance as f32) as u32;
-    log::trace!("Line length in characters: {}", line_length_in_characters);
+    log::trace!("Average line length in characters: {}", average_line_length);
 
-    // --------- CULLING, CLEAR COLOR AND BLENDING SET ---------
+    // Set the culling, clear color and blending options
 
     unsafe {
-        gl.enable(CULL_FACE);
+        // gl.enable(CULL_FACE);
         gl.clear_color(1.0, 1.0, 1.0, 1.0);
+
         gl.enable(BLEND);
         gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
     }
 
-    // --------- SET UP THE TEXT SHADER ---------
+    // Set up the text program with the shaders
 
-    let vertex_source = r#"
+    let vertex_shader_source = r#"
 #version 330 core
 layout (location = 0) in vec4 vertex; // <vec2 pos, vec2 tex>
 out vec2 TexCoords;
@@ -138,7 +144,7 @@ void main() {
     TexCoords = vertex.zw;
 }
 "#;
-    let fragment_source = r#"
+    let fragment_shader_source = r#"
 #version 330 core
 in vec2 TexCoords;
 out vec4 color;
@@ -154,28 +160,44 @@ void main() {
     let program = unsafe {
         let program = gl.create_program().unwrap();
         let mut shaders = Vec::with_capacity(2);
-        for (shader_type, shader_source) in [
-            (VERTEX_SHADER, vertex_source),
-            (FRAGMENT_SHADER, fragment_source),
-        ] {
-            let shader = gl.create_shader(shader_type).unwrap();
-            gl.shader_source(shader, &shader_source);
+
+        // Compile and attach the vertex shader
+        {
+            let shader = gl.create_shader(VERTEX_SHADER).unwrap();
+            gl.shader_source(shader, &vertex_shader_source);
             gl.compile_shader(shader);
             if !gl.get_shader_compile_status(shader) {
-                panic!("{}", gl.get_shader_info_log(shader));
+                panic!(
+                    "error in the compilation of the vertex shader: {}",
+                    gl.get_shader_info_log(shader)
+                );
             }
             gl.attach_shader(program, shader);
             shaders.push(shader);
         }
 
-        gl.link_program(program);
-        if !gl.get_program_link_status(program) {
-            panic!("{}", gl.get_program_info_log(program));
+        // Compile and attach the fragment shader
+        {
+            let shader = gl.create_shader(FRAGMENT_SHADER).unwrap();
+            gl.shader_source(shader, &fragment_shader_source);
+            gl.compile_shader(shader);
+            if !gl.get_shader_compile_status(shader) {
+                panic!(
+                    "error in the compilation of the fragment shader: {}",
+                    gl.get_shader_info_log(shader)
+                );
+            }
+            gl.attach_shader(program, shader);
+            shaders.push(shader);
         }
 
-        for shader in shaders {
-            gl.detach_shader(program, shader);
-            gl.delete_shader(shader);
+        // Link the program
+        gl.link_program(program);
+        if !gl.get_program_link_status(program) {
+            panic!(
+                "error in the linking of the program: {}",
+                gl.get_program_info_log(program)
+            );
         }
 
         program
@@ -184,7 +206,7 @@ void main() {
         gl.use_program(Some(program));
     }
 
-    // --------- BIND THE VAO AND VBO FOR RENDERING THE TEXT ---------
+    // Bind the VAO and the VBO
 
     let vao = unsafe {
         let vao = gl.create_vertex_array().unwrap();
@@ -196,21 +218,19 @@ void main() {
     let vbo = unsafe {
         let vbo = gl.create_buffer().unwrap();
         gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
-        // TODO: An error might lay in the next call
+
+        // TODO(?): An error might lay in the next call
         let empty_buffer_data: &[u8] =
             core::slice::from_raw_parts(&[] as *const _, 6 * 4 * std::mem::size_of::<f32>());
         gl.buffer_data_u8_slice(ARRAY_BUFFER, empty_buffer_data, DYNAMIC_DRAW);
+
         gl.enable_vertex_attrib_array(0);
         gl.vertex_attrib_pointer_f32(0, 4, FLOAT, false, 4 * std::mem::size_of::<f32>() as i32, 0);
 
         vbo
     };
 
-    // TODO: What does this do?
-    unsafe {
-        gl.bind_buffer(ARRAY_BUFFER, None);
-        gl.bind_vertex_array(None);
-    }
+    // Set the uniforms to their default values
 
     let projection_matrix = glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
     unsafe {
@@ -227,79 +247,80 @@ void main() {
         gl.uniform_1_i32(uniform_location.as_ref(), 0);
     }
 
-    let mut line_text_position = window_height - font_size - margins.top;
-
-    unsafe {
-        // Disable the byte-alignment restriction
-        gl.pixel_store_i32(UNPACK_ALIGNMENT, 1);
-    }
-
-    let mut characters: HashMap<char, Character> = HashMap::new();
-
-    // --------- REQUEST TO LOAD THE CHARACTERS IN THE TEXT FROM THE CHOSEN FONT ---------
-
-    for character_nfc in text.nfc() {
-        if characters.get(&character_nfc).is_some() {
-            continue;
-        } else {
-            insert_character(&gl, &face, &mut characters, character_nfc)
-        }
-    }
-    log::trace!("Characters initially loaded: {}", characters.len());
-
-    unsafe {
-        gl.bind_texture(TEXTURE_2D, None);
-    }
-
-    // --------- START THE RENDER/EVENTS LOOP ---------
-
     let color = Vec3::new(0.0, 0.0, 0.0);
     unsafe {
         let uniform_location = gl.get_uniform_location(program, "textColor");
         gl.uniform_3_f32(uniform_location.as_ref(), color.x, color.y, color.z);
     }
 
-    let mut mouse_position = Vec2::zeros();
+    unsafe {
+        // Disable the byte-alignment restriction
+        gl.pixel_store_i32(UNPACK_ALIGNMENT, 1);
+    }
 
-    let mut wrapped_text: Vec<_> = textwrap::wrap(&text, line_length_in_characters as usize)
+    // Activate the first available texture slot.
+    unsafe {
+        gl.active_texture(TEXTURE0);
+    }
+
+    // Load the characters in the text from the chosen font
+
+    let mut characters: HashMap<char, Character> = HashMap::new();
+
+    for normalized_utf8_character in text.nfc() {
+        // If it hasn't already been loaded...
+        if characters.get(&normalized_utf8_character).is_some() {
+            continue;
+        } else {
+            // ...load it
+            load_character(&gl, &face, &mut characters, normalized_utf8_character);
+        }
+    }
+    log::trace!(
+        "Characters initially loaded from the text: {}",
+        characters.len()
+    );
+
+    let mut wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
         .iter()
         .map(|line| line.to_string())
         .collect();
 
-    // ------- LOAD THE Caret --------
+    // The caret is the '|' character, at least for now. Load it.
 
-    insert_character(&gl, &face, &mut characters, '|');
+    load_character(&gl, &face, &mut characters, '|');
     let caret_character = characters.get(&'|').unwrap().clone();
-    let mut caret = Caret::new(caret_character, wrapped_text);
-
     // Set the caret position at the end of the wrapped text
-    let mut render_requested = true;
+    let mut caret = Caret {
+        character: caret_character,
+        position: IVec2::new(
+            wrapped_text.last().unwrap().chars().count() as i32,
+            wrapped_text.len() as i32 - 1,
+        ),
+    };
+
     let mut input_buffer = Vec::new();
 
-    'render_loop: loop {
+    // Start the events loop...
+
+    'events_loop: loop {
         let mut events = Vec::new();
         for event in event_loop.wait_timeout_iter(16) {
             match event {
                 Event::Quit { .. } => {
-                    break 'render_loop;
+                    break 'events_loop;
                 }
                 // Enable/disable blending when pressing Ctrl + A or Cmd + A
                 Event::KeyDown {
                     keycode: Some(Keycode::A),
                     keymod: Mod::LCTRLMOD,
                     ..
-                } => {
-                    render_requested = true;
-                    unsafe { gl.disable(BLEND) }
-                }
+                } => unsafe { gl.disable(BLEND) },
                 Event::KeyUp {
                     keycode: Some(Keycode::A),
                     keymod: Mod::LCTRLMOD,
                     ..
-                } => {
-                    render_requested = true;
-                    unsafe { gl.enable(BLEND) }
-                }
+                } => unsafe { gl.enable(BLEND) },
                 // Save the opened document when the user presses Ctrl + S
                 Event::KeyDown {
                     keycode: Some(Keycode::S),
@@ -307,14 +328,18 @@ void main() {
                     ..
                 } => {
                     log::trace!("Saving the document");
+                    // If the file creation is unsuccessful, then the user will lose their data
                     let mut file = File::create(document_path).unwrap();
                     file.write_all(text.as_bytes()).unwrap();
                 }
                 _ => (),
             }
+            // Collect the events one by one, then use them after for further matching
             events.push(event);
         }
 
+        // Match for only one of the resizing events. This is because there's always 2 resizing events
+        // emitted by SDL2, which is a repetition and/or bug.
         match events.iter().find(|event| match event {
             sdl2::event::Event::Window { .. } => true,
             _ => false,
@@ -324,8 +349,7 @@ void main() {
                 ..
             }) => match window_event {
                 sdl2::event::WindowEvent::Resized(width, height) => {
-                    render_requested = true;
-                    // TODO: The factor 2.0 is only for the sake of testing, it should be removed
+                    // TODO(!): The factor 2.0 is only for the sake of testing, it should be removed
                     (window_width, window_height) = (2.0 * *width as f32, 2.0 * *height as f32);
 
                     let projection_matrix =
@@ -339,10 +363,10 @@ void main() {
                         );
                     }
 
-                    line_length_in_characters = ((window_width - margins.left - margins.right)
+                    average_line_length = ((window_width - margins.left - margins.right)
                         / average_character_advance as f32)
                         as u32;
-                    line_text_position = window_height - font_size - margins.top;
+                    line_height = window_height - font_size - margins.top;
 
                     unsafe {
                         gl.viewport(0, 0, window_width as i32, window_height as i32);
@@ -360,17 +384,16 @@ void main() {
             _ => (),
         }
 
-        // ------ ALGORITHM FOR SPLITTING THE TEXT INTO MULTIPLE LINES ------
-
-        // Wrap the text in a vector of strings, each string representing a line of text
-        // Join them but respect the newlines inserted by the user
-        wrapped_text = textwrap::wrap(&text, line_length_in_characters as usize)
+        // Each iteration of the loop, wrap the text in lines...
+        wrapped_text = textwrap::wrap(&text, average_line_length as usize)
             .iter()
             .map(|line| line.to_string())
             .collect();
 
-        let mut line_lengths = wrapped_text.iter().map(|line| line.len());
-        let mut caret_index_position = line_lengths
+        // ...then calculate their lengths in order to set the caret index, used to find the caret
+        // in the text to perform the usual insertions/removals/edits.
+        let line_lengths = wrapped_text.iter().map(|line| line.len());
+        let mut caret_index = line_lengths
             .clone()
             .take(caret.position.y as usize)
             .sum::<usize>()
@@ -382,16 +405,15 @@ void main() {
                 Event::KeyDown {
                     keycode: Some(key), ..
                 } => {
-                    render_requested = true;
                     match key {
                         // Delete the character at the position of the caret
                         Keycode::Backspace => {
                             caret.position.x -= 1;
-                            text.remove(caret_index_position - 1);
+                            text.remove(caret_index - 1);
                         }
                         // Enter a newline when pressing enter at the position of the caret
                         Keycode::Return => {
-                            text.insert(caret_index_position, '\n');
+                            text.insert(caret_index, '\n');
                             // Move the caret to the beginning of the next line
                             caret.position.x = 0;
                             caret.position.y += 1;
@@ -426,13 +448,13 @@ void main() {
                 Event::TextInput {
                     text: input_text, ..
                 } => {
-                    render_requested = true;
                     // Insert the input character at the position of the caret
                     input_buffer.push(input_text);
                 }
                 _ => (),
             }
-            caret_index_position = line_lengths
+            // Recalculate the caret index at each event as it may have been modified
+            caret_index = line_lengths
                 .clone()
                 .take(caret.position.y as usize)
                 .sum::<usize>()
@@ -440,120 +462,102 @@ void main() {
                 + caret.position.y as usize;
         }
 
-        // Basic replacement logic for inserting characters not available on the keyboard.
-        // Search for '\\u{XXXX}' in the text and replace it with the equivalent UTF8 symbol
-        let regex = Regex::new(r"\\u\{([0-9A-Fa-f]{4})\}").unwrap();
-        let mut text_with_unicode_symbols = text.clone();
-        for capture in regex.captures_iter(&text) {
-            // Obtain the equivalent UTF8 symbol from the 4 digits
-            let utf8_code_str = capture.get(1).unwrap().as_str();
-            let unicode_symbol =
-                char::from_u32(u32::from_str_radix(utf8_code_str, 16).unwrap()).unwrap();
-            text_with_unicode_symbols = text.replace(
-                capture.get(0).unwrap().as_str(),
-                unicode_symbol.to_string().as_str(),
-            );
-        }
-        text = text_with_unicode_symbols;
-
-        // ------------- RENDER ON REQUEST -------------
-
-        if !render_requested {
-            continue;
-        }
-        render_requested = false;
-
+        // Insert the text in the input buffer at the caret position and load each newly present
+        // character in the input.
         for input in input_buffer.drain(..) {
             for input_character in input.chars() {
-                text.insert(caret_index_position, input_character);
+                text.insert(caret_index, input_character);
                 caret.position.x += 1;
-                caret_index_position = line_lengths
+                caret_index = line_lengths
                     .clone()
                     .take(caret.position.y as usize)
                     .sum::<usize>()
                     + caret.position.x as usize
                     + caret.position.y as usize;
 
-                let character_nfc = input_character.nfc().next().unwrap();
-                if characters.get(&character_nfc).is_none() {
-                    insert_character(&gl, &face, &mut characters, character_nfc);
+                let normalized_utf8_character = input_character.nfc().next().unwrap();
+                if characters.get(&normalized_utf8_character).is_none() {
+                    load_character(&gl, &face, &mut characters, normalized_utf8_character);
                 }
             }
         }
 
-        for character_nfc in text.nfc() {
-            if characters.get(&character_nfc).is_some() {
-                continue;
-            } else {
-                insert_character(&gl, &face, &mut characters, character_nfc);
-
-                log::trace!(
-                    "Dynamically loaded the character '{}' from its UTF8 code: {}",
-                    character_nfc,
-                    format!("{:04X}", character_nfc as u32)
-                );
-            }
-        }
-
-        unsafe {
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-        }
-
-        unsafe {
-            gl.active_texture(TEXTURE0);
-            gl.bind_vertex_array(Some(vao));
-        }
-
-        wrapped_text = textwrap::wrap(&text, line_length_in_characters as usize)
+        // Re-wrap the text after inserting the input buffer in text at the caret position
+        wrapped_text = textwrap::wrap(&text, average_line_length as usize)
             .iter()
             .map(|line| line.to_string())
             .collect();
 
-        for (line_index, line) in wrapped_text.iter().enumerate() {
-            let mut character_text_position = margins.left;
+        // Begin the rendering, firstly clear the screen...
+        unsafe {
+            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+        }
 
+        // ...then, for each line in the wrapped text...
+        for (line_index, line) in wrapped_text.iter().enumerate() {
+            let mut horizontal_origin = margins.left;
+
+            // ...draw each character therein present...
             for (character_index, character) in line.chars().enumerate() {
                 let character = characters.get(&character).unwrap();
 
-                let u = character_text_position + character.bearing.x as f32;
-                let v = line_text_position - (character.size.y - character.bearing.y) as f32;
+                let x = horizontal_origin + character.bearing.x as f32;
+                let y = line_height - (character.size.y - character.bearing.y) as f32;
 
                 let width = character.size.x as f32;
                 let height = character.size.y as f32;
 
-                draw_character(&gl, u, v, width, height, character.texture, vbo);
-
-                // ------ ALGORITHM FOR FINDING THE CARET POSITION AND DRAWING IT ------
-
-                caret.draw(
+                draw_character(
                     &gl,
-                    character_index,
-                    line_index,
-                    character_text_position,
-                    line_text_position,
+                    x,
+                    y,
+                    width,
+                    height,
+                    character.texture,
                     vbo,
                 );
 
-                character_text_position += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
+                // ...and then, eventually, draw the caret as well at its position
+                let position_in_text = IVec2::new(character_index as i32, line_index as i32);
+                // When the position in the text matches the one of the caret
+                if position_in_text == caret.position {
+                    let x = horizontal_origin - caret.character.bearing.x as f32;
+                    let y =
+                        line_height - (caret.character.size.y - caret.character.bearing.y) as f32;
+
+                    let width = caret.character.size.x as f32;
+                    let height = caret.character.size.y as f32;
+
+                    draw_character(
+                        &gl,
+                        x,
+                        y,
+                        width,
+                        height,
+                        caret.character.texture,
+                        vbo,
+                    )
+                }
+
+                // Move the origin by the character advance in order to draw the characters side-to-side.
+                horizontal_origin += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
             }
 
-            line_text_position -= font_size;
+            // Move the line height below by the font size when each line is finished
+            line_height -= font_size;
         }
 
-        line_text_position = window_height - margins.top - font_size;
-
-        unsafe {
-            gl.bind_vertex_array(None);
-            gl.bind_texture(TEXTURE_2D, None);
-        }
+        // In the end, reset the line height to its original value
+        line_height = window_height - margins.top - font_size;
 
         unsafe {
             let error_code = gl.get_error();
             if error_code != 0 {
-                log::error!("OpenGL error code: {}", error_code);
+                panic!("OpenGL error code: {}", error_code);
             }
         }
 
+        // Swap the windows in order to get rid of the previous frame, which is now obsolete.
         window.gl_swap_window();
     }
 }
@@ -568,92 +572,51 @@ struct Character {
 
 struct Caret {
     position: IVec2,
-    blink: bool,
     character: Character,
 }
 
-impl Caret {
-    pub fn new(character: Character, wrapped_text: Vec<String>) -> Self {
-        Caret {
-            character,
-            position: IVec2::new(
-                wrapped_text.last().unwrap().chars().count() as i32,
-                wrapped_text.len() as i32 - 1,
-            ),
-            blink: false,
-        }
-    }
+unsafe fn texture_from_glyph(gl: &glow::Context, glyph: &freetype::GlyphSlot) -> NativeTexture {
+    let texture = gl.create_texture().unwrap();
+    gl.bind_texture(TEXTURE_2D, Some(texture));
+    gl.tex_image_2d(
+        TEXTURE_2D,
+        0,
+        RED as i32, // TODO: Why `RED`?
+        glyph.bitmap().width(),
+        glyph.bitmap().rows(),
+        0,
+        RED,
+        UNSIGNED_BYTE,
+        Some(glyph.bitmap().buffer()),
+    );
+    // Set the texture parameters for wrapping on the edges
+    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as i32);
+    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_T, CLAMP_TO_EDGE as i32);
+    // Set the texture min and mag filters to use linear filtering
+    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR as i32);
+    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR as i32);
 
-    fn draw(
-        &mut self,
-        gl: &glow::Context,
-        character_index: usize,
-        line_index: usize,
-        character_text_position: f32,
-        line_text_position: f32,
-        vbo: NativeBuffer,
-    ) {
-        let position_in_text = IVec2::new(character_index as i32, line_index as i32);
-        if position_in_text == self.position {
-            // When the position in the text matches the one of the caret
-
-            let u = character_text_position - self.character.bearing.x as f32;
-            let v = line_text_position - (self.character.size.y - self.character.bearing.y) as f32;
-
-            let width = self.character.size.x as f32;
-            let height = self.character.size.y as f32;
-
-            draw_character(&gl, u, v, width, height, self.character.texture, vbo)
-        }
-    }
+    texture
 }
 
-trait NativeTextureExt {
-    unsafe fn from_glyph(gl: &glow::Context, glyph: &freetype::GlyphSlot) -> Self;
-}
-
-impl NativeTextureExt for NativeTexture {
-    unsafe fn from_glyph(gl: &glow::Context, glyph: &freetype::GlyphSlot) -> Self {
-        let texture = gl.create_texture().unwrap();
-        gl.bind_texture(TEXTURE_2D, Some(texture));
-        gl.tex_image_2d(
-            TEXTURE_2D,
-            0,
-            RED as i32, // TODO: Why `RED`?
-            glyph.bitmap().width(),
-            glyph.bitmap().rows(),
-            0,
-            RED,
-            UNSIGNED_BYTE,
-            Some(glyph.bitmap().buffer()),
-        );
-        // Set the texture parameters
-        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as i32);
-        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_T, CLAMP_TO_EDGE as i32);
-        // Set the texture min and mag filters
-        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, NEAREST as i32);
-        gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, NEAREST as i32);
-
-        texture
-    }
-}
-
-fn insert_character(
+fn load_character(
     gl: &glow::Context,
     face: &freetype::Face,
     characters: &mut HashMap<char, Character>,
-    character_nfc: char,
+    normalized_utf8_character: char,
 ) {
-    face.load_char(character_nfc as usize, freetype::face::LoadFlag::RENDER)
-        .unwrap_or_else(|_| {
-            panic!(
-                "unable to find the character '{}' in the font",
-                character_nfc
-            )
-        });
+    face.load_char(
+        normalized_utf8_character as usize,
+        freetype::face::LoadFlag::RENDER,
+    )
+    .unwrap_or_else(|_| {
+        panic!(
+            "unable to find the character '{}' in the font",
+            normalized_utf8_character
+        )
+    });
     let glyph = face.glyph();
-
-    let texture = unsafe { NativeTexture::from_glyph(&gl, glyph) };
+    let texture = unsafe { texture_from_glyph(&gl, glyph) };
 
     let character = Character {
         texture,
@@ -661,13 +624,13 @@ fn insert_character(
         bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
         advance: glyph.advance().x as u32,
     };
-    characters.insert(character_nfc, character);
+    characters.insert(normalized_utf8_character, character);
 }
 
 fn draw_character(
     gl: &glow::Context,
-    u: f32,
-    v: f32,
+    x: f32,
+    y: f32,
     width: f32,
     height: f32,
     texture: NativeTexture,
@@ -675,12 +638,12 @@ fn draw_character(
 ) {
     let vertices = {
         [
-            [u, v + height, 0.0, 0.0],
-            [u, v, 0.0, 1.0],
-            [u + width, v, 1.0, 1.0],
-            [u, v + height, 0.0, 0.0],
-            [u + width, v, 1.0, 1.0],
-            [u + width, v + height, 1.0, 0.0],
+            [x, y + height, 0.0, 0.0],
+            [x, y, 0.0, 1.0],
+            [x + width, y, 1.0, 1.0],
+            [x, y + height, 0.0, 0.0],
+            [x + width, y, 1.0, 1.0],
+            [x + width, y + height, 1.0, 0.0],
         ]
     };
 
@@ -696,8 +659,6 @@ fn draw_character(
     }
 
     unsafe {
-        gl.bind_buffer(ARRAY_BUFFER, None);
-
         gl.draw_arrays(TRIANGLES, 0, 6);
     }
 }
