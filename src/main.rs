@@ -56,7 +56,7 @@ fn main() {
     gl_attributes.set_multisample_samples(4);
 
     let mut window = video
-        .window(document_path, 1024, 769)
+        .window(document_path, 800, 600)
         .opengl()
         .resizable()
         .allow_highdpi()
@@ -124,7 +124,7 @@ fn main() {
     // Set the culling, clear color and blending options
 
     unsafe {
-        gl.enable(CULL_FACE);
+        // gl.enable(CULL_FACE);
         gl.clear_color(1.0, 1.0, 1.0, 1.0);
 
         gl.enable(BLEND);
@@ -209,14 +209,14 @@ void main() {
 
     // Bind the VAO and the VBO
 
-    let vao = unsafe {
+    let _vao = unsafe {
         let vao = gl.create_vertex_array().unwrap();
         gl.bind_vertex_array(Some(vao));
 
         vao
     };
 
-    let vbo = unsafe {
+    let _vbo = unsafe {
         let vbo = gl.create_buffer().unwrap();
         gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
 
@@ -259,11 +259,6 @@ void main() {
         gl.pixel_store_i32(UNPACK_ALIGNMENT, 1);
     }
 
-    // Activate the first available texture slot.
-    unsafe {
-        gl.active_texture(TEXTURE0);
-    }
-
     // Load the characters in the text from the chosen font
 
     let mut characters: HashMap<char, Character> = HashMap::new();
@@ -282,7 +277,7 @@ void main() {
         characters.len()
     );
 
-    let mut wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
+    let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
         .iter()
         .map(|line| line.to_string())
         .collect();
@@ -303,8 +298,8 @@ void main() {
     let mut input_buffer = Vec::new();
 
     // Start the events loop...
-
-    let _resize_event_watch = event_subsystem.add_event_watch(|event| match event {
+    let (resize_event_transmitter, resize_event_receiver) = std::sync::mpsc::channel();
+    let _resize_event_watcher = event_subsystem.add_event_watch(|event| match event {
         sdl2::event::Event::Window {
             win_event: window_event,
             ..
@@ -312,34 +307,38 @@ void main() {
             sdl2::event::WindowEvent::Resized(width, height) => {
                 let (window_width, window_height) = (2.0 * width as f32, 2.0 * height as f32);
 
-                let projection_matrix =
-                    glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
-                unsafe {
-                    let uniform_location = gl.get_uniform_location(program, "projection");
-                    gl.uniform_matrix_4_f32_slice(
-                        uniform_location.as_ref(),
-                        false,
-                        projection_matrix.as_slice(),
-                    );
-                }
-
                 unsafe {
                     gl.viewport(0, 0, window_width as i32, window_height as i32);
                     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
                 }
                 window.gl_swap_window();
+                resize_event_transmitter
+                    .send((window_width, window_height))
+                    .unwrap();
             }
             _ => (),
         },
         _ => (),
     });
 
+    let mut mouse_position = Vec2::new(0.0, 0.0);
+
     'events_loop: loop {
+        let mut mouse_pressed = false;
         let mut events = Vec::new();
-        for event in event_loop.wait_timeout_iter(16) {
+        for event in event_loop.poll_iter() {
             match event {
                 Event::Quit { .. } => {
                     break 'events_loop;
+                }
+                // Register the mouse position
+                Event::MouseMotion { x, y, .. } => {
+                    mouse_position = Vec2::new(x as f32 * 2.0, y as f32 * 2.0);
+                    log::trace!("Mouse position: {:?}", mouse_position);
+                }
+                // Check if the mouse button is pressed
+                Event::MouseButtonDown { .. } => {
+                    mouse_pressed = true;
                 }
                 // Enable/disable blending when pressing Ctrl + A or Cmd + A
                 Event::KeyDown {
@@ -371,47 +370,36 @@ void main() {
 
         // Match for only one of the resizing events. This is because there's always 2 resizing events
         // emitted by SDL2, which is a repetition and/or bug.
-        match events.iter().find(|event| match event {
-            sdl2::event::Event::Window { .. } => true,
-            _ => false,
-        }) {
-            Some(sdl2::event::Event::Window {
-                win_event: window_event,
-                ..
-            }) => match window_event {
-                sdl2::event::WindowEvent::Resized(width, height) => {
-                    // TODO(!): The factor 2.0 is only for the sake of testing, it should be removed
-                    (window_width, window_height) = (2.0 * *width as f32, 2.0 * *height as f32);
+        let mut resize_requested = false;
+        while let Ok((width, height)) = resize_event_receiver.try_recv() {
+            // Drain the channel
+            resize_requested = true;
+            (window_width, window_height) = (width, height);
+        }
+        if resize_requested {
+            // TODO(!): The factor 2.0 is only for the sake of testing, it should be removed
+            let projection_matrix = glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
+            unsafe {
+                let uniform_location = gl.get_uniform_location(program, "projection");
+                gl.uniform_matrix_4_f32_slice(
+                    uniform_location.as_ref(),
+                    false,
+                    projection_matrix.as_slice(),
+                );
+            }
 
-                    let projection_matrix =
-                        glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
-                    unsafe {
-                        let uniform_location = gl.get_uniform_location(program, "projection");
-                        gl.uniform_matrix_4_f32_slice(
-                            uniform_location.as_ref(),
-                            false,
-                            projection_matrix.as_slice(),
-                        );
-                    }
+            average_line_length = ((window_width - margins.left - margins.right)
+                / average_character_advance as f32) as u32;
+            line_height = window_height - font_size - margins.top;
 
-                    average_line_length = ((window_width - margins.left - margins.right)
-                        / average_character_advance as f32)
-                        as u32;
-                    line_height = window_height - font_size - margins.top;
-
-                    unsafe {
-                        gl.viewport(0, 0, window_width as i32, window_height as i32);
-                        gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-                    }
-                    // window.gl_swap_window();
-                }
-                _ => (),
-            },
-            _ => (),
+            unsafe {
+                gl.viewport(0, 0, window_width as i32, window_height as i32);
+                gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+            }
         }
 
         // Each iteration of the loop, wrap the text in lines...
-        wrapped_text = textwrap::wrap(&text, average_line_length as usize)
+        let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
             .iter()
             .map(|line| line.to_string())
             .collect();
@@ -511,7 +499,7 @@ void main() {
         }
 
         // Re-wrap the text after inserting the input buffer in text at the caret position
-        wrapped_text = textwrap::wrap(&text, average_line_length as usize)
+        let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
             .iter()
             .map(|line| line.to_string())
             .collect();
@@ -522,13 +510,12 @@ void main() {
         }
 
         // ...then, for each line in the wrapped text...
-        let mut characters_vertices = Vec::new();
         for (line_index, line) in wrapped_text.iter().enumerate() {
             let mut horizontal_origin = margins.left;
 
             // ...draw each character therein present...
-            for (character_index, character) in line.chars().enumerate() {
-                let character = characters.get(&character).unwrap();
+            for (character_index, char) in line.chars().enumerate() {
+                let character = characters.get(&char).unwrap();
 
                 let x = horizontal_origin + character.bearing.x as f32;
                 let y = line_height - (character.size.y - character.bearing.y) as f32;
@@ -536,17 +523,29 @@ void main() {
                 let width = character.size.x as f32;
                 let height = character.size.y as f32;
 
-                let vertices = {
-                    [
-                        [x, y + height, 0.0, 0.0],
-                        [x, y, 0.0, 1.0],
-                        [x + width, y, 1.0, 1.0],
-                        [x, y + height, 0.0, 0.0],
-                        [x + width, y, 1.0, 1.0],
-                        [x + width, y + height, 1.0, 0.0],
-                    ]
+                let vertices = [
+                    [x, y + height, 0.0, 0.0],
+                    [x, y, 0.0, 1.0],
+                    [x + width, y, 1.0, 1.0],
+                    [x, y + height, 0.0, 0.0],
+                    [x + width, y, 1.0, 1.0],
+                    [x + width, y + height, 1.0, 0.0],
+                ];
+
+                let character_bounding_box = BoundingBox {
+                    x,
+                    y,
+                    width,
+                    height,
                 };
-                characters_vertices.push(vertices);
+                if mouse_pressed {
+                    // If the mouse is pressed, check if the mouse is over any of the characters
+                    // If it is, then move the caret to that position
+                    if character_bounding_box.contains_position(mouse_position) {
+                        caret.position =
+                            IVec2::new(character_index as i32, (20 - line_index) as i32);
+                    }
+                }
 
                 unsafe {
                     gl.bind_texture(TEXTURE_2D, Some(character.texture));
@@ -556,6 +555,10 @@ void main() {
                         vertices.len() * 4 * std::mem::size_of::<f32>(),
                     );
                     gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
+                }
+
+                unsafe {
+                    gl.draw_arrays(TRIANGLES, 0, 6);
                 }
 
                 // ...and then, eventually, draw the caret as well at its position
@@ -569,17 +572,14 @@ void main() {
                     let width = caret.character.size.x as f32;
                     let height = caret.character.size.y as f32;
 
-                    let vertices = {
-                        [
-                            [x, y + height, 0.0, 0.0],
-                            [x, y, 0.0, 1.0],
-                            [x + width, y, 1.0, 1.0],
-                            [x, y + height, 0.0, 0.0],
-                            [x + width, y, 1.0, 1.0],
-                            [x + width, y + height, 1.0, 0.0],
-                        ]
-                    };
-                    characters_vertices.push(vertices);
+                    let vertices = [
+                        [x, y + height, 0.0, 0.0],
+                        [x, y, 0.0, 1.0],
+                        [x + width, y, 1.0, 1.0],
+                        [x, y + height, 0.0, 0.0],
+                        [x + width, y, 1.0, 1.0],
+                        [x + width, y + height, 1.0, 0.0],
+                    ];
 
                     unsafe {
                         gl.bind_texture(TEXTURE_2D, Some(caret.character.texture));
@@ -594,10 +594,6 @@ void main() {
                     unsafe {
                         gl.draw_arrays(TRIANGLES, 0, 6);
                     }
-                }
-
-                unsafe {
-                    gl.draw_arrays(TRIANGLES, 0, 6 * line.len() as i32);
                 }
 
                 // Move the origin by the character advance in order to draw the characters side-to-side.
@@ -620,6 +616,23 @@ void main() {
 
         // Swap the windows in order to get rid of the previous frame, which is now obsolete.
         window.gl_swap_window();
+    }
+}
+
+#[derive(Debug)]
+struct BoundingBox {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+impl BoundingBox {
+    fn contains_position(&self, position: Vec2) -> bool {
+        position.x >= self.x
+            && position.x <= self.x + self.width
+            && position.y >= self.y
+            && position.y <= self.y + self.height
     }
 }
 
