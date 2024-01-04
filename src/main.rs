@@ -334,7 +334,6 @@ void main() {
                 // Register the mouse position
                 Event::MouseMotion { x, y, .. } => {
                     mouse_position = Vec2::new(x as f32 * 2.0, y as f32 * 2.0);
-                    log::trace!("Mouse position: {:?}", mouse_position);
                 }
                 // Check if the mouse button is pressed
                 Event::MouseButtonDown { .. } => {
