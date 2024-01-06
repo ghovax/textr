@@ -1,76 +1,524 @@
-use std::{collections::HashMap, fs::File, time::Instant};
-
-use chrono::Local;
-// use clap::Parser;
-use glm::{IVec2, Vec2, Vec3};
-use glow::*;
-use itertools::Itertools;
-use log::LevelFilter;
+use anyhow::Ok;
+use bytemuck::{Pod, Zeroable};
+use glm::IVec2;
+use image::GenericImageView;
 use nalgebra_glm as glm;
-use regex::Regex;
-use sdl2::{
-    event::Event,
-    keyboard::{Keycode, Mod},
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Write,
+    ops::Deref,
+    rc::Rc,
+    thread,
+    time::{Duration, Instant},
 };
-use std::io::Write;
+
+use ultraviolet::Vec2;
 use unicode_normalization::UnicodeNormalization;
+use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
+    event::*,
+    event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopWindowTarget},
+    window::{Window, WindowBuilder},
+};
 
-mod line;
+use wgpu::{util::DeviceExt, InstanceFlags};
+use winit_input_helper::WinitInputHelper;
 
-use crate::line::Margins;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct View {
+    position: Vec2,
+    scale: f32,
+    x: u16,
+    y: u16,
+}
 
-// TODOs
-// [ ] 2. Improve performance by caching the textures or something similar
-// [ ] 4. Fix the disappearance of the caret at the end of the line, as well as the crashes
+unsafe impl Pod for View {}
+unsafe impl Zeroable for View {}
+
+#[derive(Debug)]
+pub struct Texture {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub sampler: wgpu::Sampler,
+}
+
+impl Texture {
+    pub fn from_bytes(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bytes: &[u8],
+        label: &str,
+    ) -> anyhow::Result<Self> {
+        let image = image::load_from_memory(bytes)?;
+        Self::from_image(device, queue, &image, Some(label))
+    }
+
+    pub fn from_glyph(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        glyph: &freetype::GlyphSlot,
+        label: Option<&str>,
+    ) -> Self {
+        let dimensions = (glyph.bitmap().width() as u32, glyph.bitmap().rows() as u32);
+        let size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            depth_or_array_layers: 1,
+        };
+
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb; // TODO: Maybe replace?
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            glyph.bitmap().buffer(),
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0),
+                rows_per_image: Some(dimensions.1),
+            },
+            size,
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Self {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
+    pub fn from_image(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image: &image::DynamicImage,
+        label: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let rgba = image.to_rgba8();
+        let dimensions = image.dimensions();
+
+        let size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            depth_or_array_layers: 1,
+        };
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0),
+                rows_per_image: Some(dimensions.1),
+            },
+            size,
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Ok(Self {
+            texture,
+            view,
+            sampler,
+        })
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Vertex {
+    pub position: Vec2,
+    pub color: u32,
+}
+
+unsafe impl Pod for Vertex {}
+unsafe impl Zeroable for Vertex {}
+
+impl Vertex {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Uint32];
+
+    fn descriptor<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBUTES,
+        }
+    }
+}
+
+struct RenderState {
+    window: Window,
+    surface: wgpu::Surface,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    configuration: wgpu::SurfaceConfiguration,
+    physical_size: winit::dpi::PhysicalSize<u32>,
+    vertices: u32,
+    vertex_buffer: wgpu::Buffer,
+    render_pipeline: wgpu::RenderPipeline,
+    view: View,
+    view_buffer: wgpu::Buffer,
+    view_bind_group: wgpu::BindGroup,
+}
+
+impl RenderState {
+    // Creating some of the wgpu types requires async code
+    fn new(window: Window) -> Self {
+        // The instance is a handle to our GPU
+        // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            dx12_shader_compiler: Default::default(),
+            ..Default::default()
+        });
+
+        // # Safety
+        //
+        // The surface needs to live as long as the window that created it.
+        // State owns the window so this should be safe.
+        let surface = unsafe { instance.create_surface(&window) }.unwrap();
+
+        let adapter = pollster::block_on(async {
+            instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: Some(&surface),
+                    force_fallback_adapter: false,
+                })
+                .await
+        })
+        .unwrap();
+
+        let (device, queue) = pollster::block_on(async {
+            adapter
+                .request_device(
+                    &wgpu::DeviceDescriptor {
+                        features: wgpu::Features::empty(), // wgpu::Features::CONSERVATIVE_RASTERIZATION,
+                        // WebGL doesn't support all of wgpu's features, so if
+                        // we're building for the web we'll have to disable some.
+                        limits: if cfg!(target_arch = "wasm32") {
+                            wgpu::Limits::downlevel_webgl2_defaults()
+                        } else {
+                            wgpu::Limits::default()
+                        },
+                        label: None,
+                    },
+                    None, // Trace path
+                )
+                .await
+        })
+        .unwrap();
+
+        let surface_capabilities = surface.get_capabilities(&adapter);
+        // Shader code assumes an sRGB surface texture. Using a different
+        // one will result all the colors coming out darker. If you want to support non
+        // sRGB surfaces, you'll need to account for that when drawing to the frame.
+        let surface_format = surface_capabilities
+            .formats
+            .iter()
+            .copied()
+            .filter(|format| format.is_srgb())
+            .next()
+            .unwrap_or(surface_capabilities.formats[0]);
+
+        let inner_size = window.inner_size();
+        let configuration = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width: inner_size.width,
+            height: inner_size.height,
+            present_mode: wgpu::PresentMode::AutoVsync, // Could be surface_capabilities.present_modes[0] but Intel Arc A770 go brrr.
+            alpha_mode: surface_capabilities.alpha_modes[0],
+            view_formats: vec![],
+        };
+        surface.configure(&device, &configuration);
+
+        let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+
+        let view = View {
+            position: Vec2::zero(),
+            scale: 1.0,
+            x: configuration.width as u16,
+            y: configuration.height as u16,
+        };
+
+        let view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("View Buffer"),
+            contents: bytemuck::cast_slice(&[view]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let view_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("View Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("View Bind Group"),
+            layout: &view_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: view_buffer.as_entire_binding(),
+            }],
+        });
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&view_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vertex_main",
+                buffers: &[Vertex::descriptor()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fragment_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: configuration.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw, // 2.
+                cull_mode: Some(wgpu::Face::Back),
+                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                polygon_mode: wgpu::PolygonMode::Fill,
+                // Requires Features::DEPTH_CLIP_CONTROL
+                unclipped_depth: false,
+                // Requires Features::CONSERVATIVE_RASTERIZATION
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+
+        let vertices = 0;
+
+        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Vertex Buffer"),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::COPY_DST,
+            size: 1 << 24,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            window,
+            surface,
+            device,
+            queue,
+            configuration,
+            physical_size: inner_size,
+            vertices,
+            vertex_buffer,
+            render_pipeline,
+            view,
+            view_buffer,
+            view_bind_group,
+        }
+    }
+
+    pub fn window(&self) -> &Window {
+        &self.window
+    }
+
+    // Return true if an event has been captured
+    fn input(&mut self, event: &Event<()>) -> bool {
+        false
+    }
+
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.queue
+            .write_buffer(&self.view_buffer, 0, bytemuck::cast_slice(&[self.view]));
+
+        let output = self.surface.get_current_texture()?;
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[
+                    // This is what @location(0) in the fragment shader targets
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                ],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.view_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.draw(0..self.vertices, 0..1);
+        }
+
+        // submit will accept anything that implements IntoIter
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        std::result::Result::Ok(())
+    }
+
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.physical_size = new_size;
+            self.configuration.width = new_size.width;
+            self.configuration.height = new_size.height;
+            self.surface.configure(&self.device, &self.configuration);
+
+            self.view.x = new_size.width as u16;
+            self.view.y = new_size.height as u16;
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum WindowMode {
+    Windowed(u32, u32),
+    Fullscreen,
+}
+
+enum CustomEvent {
+    SaveFile,
+}
 
 fn main() {
-    // Log file with the current time and date
-    // let log_file_name = format!("logs/log_{}.txt", Local::now().format("%Y-%m-%d_%H-%M-%S"));
-    // let log_file = Box::new(File::create(log_file_name).unwrap());
-    env_logger::builder()
-        // .target(env_logger::Target::Pipe(log_file))
-        .filter_level(LevelFilter::Trace)
-        .init();
+    env_logger::init();
+
+    let event_loop: EventLoop<_> = EventLoopBuilder::<CustomEvent>::with_user_event().build();
+    let mut builder = WindowBuilder::new().with_title("TeXtr");
+
+    let mut window_size = (800, 600);
+    let window_mode = WindowMode::Windowed(window_size.0, window_size.1);
+
+    match window_mode {
+        WindowMode::Windowed(width, height) => {
+            let monitor = event_loop.primary_monitor().unwrap();
+            let size = monitor.size();
+            let position = PhysicalPosition::new(
+                (size.width - width) as i32 / 2,
+                (size.height - height) as i32 / 2,
+            );
+            builder = builder
+                .with_inner_size(PhysicalSize::new(width, height))
+                .with_position(position);
+        }
+        WindowMode::Fullscreen => {
+            builder = builder.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        }
+    };
+
+    let window = builder.build(&event_loop).unwrap();
+
+    let mut render_state = RenderState::new(window);
+    let mut input_helper = WinitInputHelper::new();
 
     let document_path = "assets/textTest.txt";
     let font_path = "fonts/cmunrm.ttf";
 
-    log::trace!(
+    log::info!(
         "The document '{}' will be loaded with the font '{}'",
         document_path,
         font_path
     );
-
-    // Initialize the GLFW window
-
-    let sdl = sdl2::init().unwrap();
-    let event_subsystem = sdl.event().unwrap();
-    let video = sdl.video().unwrap();
-
-    let gl_attributes = video.gl_attr();
-    gl_attributes.set_context_profile(sdl2::video::GLProfile::Core);
-    gl_attributes.set_context_version(3, 3);
-    gl_attributes.set_context_flags().forward_compatible().set();
-
-    gl_attributes.set_accelerated_visual(true);
-    gl_attributes.set_multisample_samples(4);
-
-    let mut window = video
-        .window(document_path, 800, 600)
-        .opengl()
-        .resizable()
-        .allow_highdpi()
-        .build()
-        .unwrap();
-    window.set_minimum_size(480, 320).unwrap();
-
-    // Load OpenGL v3.3 from GLFW
-
-    let _gl_context = window.gl_create_context().unwrap();
-    let gl = unsafe {
-        glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
-    };
-    let mut event_loop = sdl.event_pump().unwrap();
 
     // Load the library Freetype for using the font glyphs
 
@@ -78,13 +526,13 @@ fn main() {
 
     // Load the text from the file path given
     let mut text = std::fs::read_to_string(document_path).unwrap();
-    log::trace!("Imported the text: {:?}", text);
-    let face = library.new_face(font_path, 0).unwrap();
+    log::debug!("Imported the text: {:?}", text);
+    let font_face = library.new_face(font_path, 0).unwrap();
 
     // Calculate the line length based on the average character advance
 
     let font_size = 50.0; // Arbitrary unit of measurement
-    face.set_pixel_sizes(0, font_size as u32).unwrap(); // TODO: `pixel_width` is 0? Probably it means "take the default one"
+    font_face.set_pixel_sizes(0, font_size as u32).unwrap(); // TODO: `pixel_width` is 0? Probably it means "take the default one"
 
     let margins = Margins {
         top: 60.0,
@@ -93,11 +541,7 @@ fn main() {
         right: 30.0,
     };
 
-    let framebuffer_size = window.drawable_size();
-    let (mut window_width, mut window_height) =
-        (framebuffer_size.0 as f32, framebuffer_size.1 as f32);
-
-    let mut line_height = window_height - font_size - margins.top;
+    let mut line_height = window_size.1 as f32 - font_size - margins.top;
 
     let mut character_advances = Vec::new();
     for normalized_utf8_character in
@@ -105,159 +549,31 @@ fn main() {
             .chars()
             .nfc()
     {
-        face.load_char(
-            normalized_utf8_character as usize,
-            freetype::face::LoadFlag::RENDER,
-        )
-        .unwrap();
-        let glyph = face.glyph();
+        font_face
+            .load_char(
+                normalized_utf8_character as usize,
+                freetype::face::LoadFlag::RENDER,
+            )
+            .unwrap();
+        let glyph = font_face.glyph();
 
         character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
     }
     let average_character_advance =
         (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32;
 
-    let mut average_line_length =
-        ((window_width - margins.left - margins.right) / average_character_advance as f32) as u32;
+    let mut average_line_length = ((window_size.0 as f32 - margins.left - margins.right)
+        / average_character_advance as f32) as u32;
     log::trace!("Average line length in characters: {}", average_line_length);
 
-    // Set the culling, clear color and blending options
-
-    unsafe {
-        // gl.enable(CULL_FACE);
-        gl.clear_color(1.0, 1.0, 1.0, 1.0);
-
-        gl.enable(BLEND);
-        gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
-    }
-
-    // Set up the text program with the shaders
-
-    let vertex_shader_source = r#"
-#version 330 core
-layout (location = 0) in vec4 vertex; // <vec2 pos, vec2 tex>
-out vec2 TexCoords;
-
-uniform mat4 projection;
-
-void main() {
-    gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
-    TexCoords = vertex.zw;
-}
-"#;
-    let fragment_shader_source = r#"
-#version 330 core
-in vec2 TexCoords;
-out vec4 color;
-
-uniform sampler2D text;
-uniform vec3 textColor;
-
-void main() {    
-    vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
-    color = vec4(textColor, 1.0) * sampled;
-}
-"#;
-    let program = unsafe {
-        let program = gl.create_program().unwrap();
-        let mut shaders = Vec::with_capacity(2);
-
-        // Compile and attach the vertex shader
-        {
-            let shader = gl.create_shader(VERTEX_SHADER).unwrap();
-            gl.shader_source(shader, &vertex_shader_source);
-            gl.compile_shader(shader);
-            if !gl.get_shader_compile_status(shader) {
-                panic!(
-                    "error in the compilation of the vertex shader: {}",
-                    gl.get_shader_info_log(shader)
-                );
-            }
-            gl.attach_shader(program, shader);
-            shaders.push(shader);
-        }
-
-        // Compile and attach the fragment shader
-        {
-            let shader = gl.create_shader(FRAGMENT_SHADER).unwrap();
-            gl.shader_source(shader, &fragment_shader_source);
-            gl.compile_shader(shader);
-            if !gl.get_shader_compile_status(shader) {
-                panic!(
-                    "error in the compilation of the fragment shader: {}",
-                    gl.get_shader_info_log(shader)
-                );
-            }
-            gl.attach_shader(program, shader);
-            shaders.push(shader);
-        }
-
-        // Link the program
-        gl.link_program(program);
-        if !gl.get_program_link_status(program) {
-            panic!(
-                "error in the linking of the program: {}",
-                gl.get_program_info_log(program)
-            );
-        }
-
-        program
-    };
-    unsafe {
-        gl.use_program(Some(program));
-    }
-
-    // Bind the VAO and the VBO
-
-    let _vao = unsafe {
-        let vao = gl.create_vertex_array().unwrap();
-        gl.bind_vertex_array(Some(vao));
-
-        vao
-    };
-
-    let _vbo = unsafe {
-        let vbo = gl.create_buffer().unwrap();
-        gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
-
-        // TODO(?): An error might lay in the next call
-        let empty_buffer_data: &[u8] =
-            core::slice::from_raw_parts(&[] as *const _, 6 * 4 * std::mem::size_of::<f32>());
-        gl.buffer_data_u8_slice(ARRAY_BUFFER, empty_buffer_data, DYNAMIC_DRAW);
-
-        gl.enable_vertex_attrib_array(0);
-        gl.vertex_attrib_pointer_f32(0, 4, FLOAT, false, 4 * std::mem::size_of::<f32>() as i32, 0);
-
-        vbo
-    };
-
-    // Set the uniforms to their default values
-
-    let projection_matrix = glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
-    unsafe {
-        let uniform_location = gl.get_uniform_location(program, "projection");
-        gl.uniform_matrix_4_f32_slice(
-            uniform_location.as_ref(),
-            false,
-            projection_matrix.as_slice(),
-        );
-    }
-
-    unsafe {
-        let uniform_location = gl.get_uniform_location(program, "text");
-        gl.uniform_1_i32(uniform_location.as_ref(), 0);
-    }
-
-    let color = Vec3::new(0.0, 0.0, 0.0);
-    unsafe {
-        let uniform_location = gl.get_uniform_location(program, "textColor");
-        gl.uniform_3_f32(uniform_location.as_ref(), color.x, color.y, color.z);
-    }
-
-    unsafe {
-        // Disable the byte-alignment restriction
-        gl.pixel_store_i32(UNPACK_ALIGNMENT, 1);
-    }
+    let projection_matrix = glm::ortho(
+        0.0,
+        window_size.0 as f32,
+        0.0,
+        window_size.1 as f32,
+        -1.0,
+        1.0,
+    );
 
     // Load the characters in the text from the chosen font
 
@@ -269,10 +585,19 @@ void main() {
             continue;
         } else {
             // ...load it
-            load_character(&gl, &face, &mut characters, normalized_utf8_character);
+            match load_character(
+                &render_state.device,
+                &render_state.queue,
+                &font_face,
+                &mut characters,
+                normalized_utf8_character,
+            ) {
+                std::result::Result::Ok(_) => (),
+                Err(error) => panic!("error loading the character: {:?}", error),
+            };
         }
     }
-    log::trace!(
+    log::debug!(
         "Characters initially loaded from the text: {}",
         characters.len()
     );
@@ -284,7 +609,16 @@ void main() {
 
     // The caret is the '|' character, at least for now. Load it.
 
-    load_character(&gl, &face, &mut characters, '|');
+    match load_character(
+        &render_state.device,
+        &render_state.queue,
+        &font_face,
+        &mut characters,
+        '|',
+    ) {
+        std::result::Result::Ok(_) => (),
+        Err(error) => panic!("error loading the caret character: {:?}", error),
+    };
     let caret_character = characters.get(&'|').unwrap().clone();
     // Set the caret position at the end of the wrapped text
     let mut caret = Caret {
@@ -295,407 +629,171 @@ void main() {
         ),
     };
 
-    let mut input_buffer = Vec::new();
+    let (custom_event_sender, custom_event_receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        // Assign a value to cap the ticks-per-second
+        let tps_cap: Option<u32> = Some(60);
 
-    // Start the events loop...
-    let (resize_event_transmitter, resize_event_receiver) = std::sync::mpsc::channel();
-    let _resize_event_watcher = event_subsystem.add_event_watch(|event| match event {
-        sdl2::event::Event::Window {
-            win_event: window_event,
-            ..
-        } => match window_event {
-            sdl2::event::WindowEvent::Resized(width, height) => {
-                let (window_width, window_height) = (2.0 * width as f32, 2.0 * height as f32);
+        let desired_frame_time = tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
 
-                unsafe {
-                    gl.viewport(0, 0, window_width as i32, window_height as i32);
-                    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+        loop {
+            let frame_start_time = Instant::now();
+            log::trace!("{:?}", frame_start_time);
+
+            use std::result::Result::Ok;
+            match custom_event_receiver.try_recv() {
+                Ok(CustomEvent::SaveFile) => {
+                    // TODO(!): If the file creation is unsuccessful, then the user will lose their data
+                    let mut file = File::create(document_path).unwrap();
+                    file.write_all(text.clone().as_bytes()).unwrap();
+                    log::info!("The document has been successfully saved");
                 }
-                window.gl_swap_window();
-                resize_event_transmitter
-                    .send((window_width, window_height))
-                    .unwrap();
+                _ => (),
             }
-            _ => (),
-        },
-        _ => (),
+
+            // Cap the ticks-per-second
+            if let Some(desired_frame_time) = desired_frame_time {
+                let elapsed_time = frame_start_time.elapsed();
+                if elapsed_time < desired_frame_time {
+                    thread::sleep(desired_frame_time - elapsed_time);
+                }
+            }
+        }
     });
 
-    let mut mouse_position = Vec2::new(0.0, 0.0);
-
-    'events_loop: loop {
-        let mut mouse_pressed = false;
-        let mut events = Vec::new();
-        for event in event_loop.poll_iter() {
-            match event {
-                Event::Quit { .. } => {
-                    break 'events_loop;
-                }
-                // Register the mouse position
-                Event::MouseMotion { x, y, .. } => {
-                    mouse_position = Vec2::new(x as f32 * 2.0, y as f32 * 2.0);
-                }
-                // Check if the mouse button is pressed
-                Event::MouseButtonDown { .. } => {
-                    mouse_pressed = true;
-                }
-                // Enable/disable blending when pressing Ctrl + A or Cmd + A
-                Event::KeyDown {
-                    keycode: Some(Keycode::A),
-                    keymod: Mod::LCTRLMOD,
-                    ..
-                } => unsafe { gl.disable(BLEND) },
-                Event::KeyUp {
-                    keycode: Some(Keycode::A),
-                    keymod: Mod::LCTRLMOD,
-                    ..
-                } => unsafe { gl.enable(BLEND) },
-                // Save the opened document when the user presses Ctrl + S
-                Event::KeyDown {
-                    keycode: Some(Keycode::S),
-                    keymod: Mod::LCTRLMOD,
-                    ..
-                } => {
-                    // If the file creation is unsuccessful, then the user will lose their data
-                    let mut file = File::create(document_path).unwrap();
-                    file.write_all(text.as_bytes()).unwrap();
-                    log::trace!("The document has been successfully saved");
-                }
+    event_loop.run(move |event, target, control_flow| {
+        let mut ctrl_is_pressed = false;
+        match event {
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == render_state.window().id() => match event {
+                WindowEvent::ModifiersChanged(modifiers_state) => match *modifiers_state {
+                    ModifiersState::CTRL => {
+                        ctrl_is_pressed = true;
+                    }
+                    _ => (),
+                },
                 _ => (),
-            }
-            // Collect the events one by one, then use them after for further matching
-            events.push(event);
-        }
+            },
+            _ => (),
+        };
 
-        // Match for only one of the resizing events. This is because there's always 2 resizing events
-        // emitted by SDL2, which is a repetition and/or bug.
-        let mut resize_requested = false;
-        while let Ok((width, height)) = resize_event_receiver.try_recv() {
-            // Drain the channel
-            resize_requested = true;
-            (window_width, window_height) = (width, height);
-        }
-        if resize_requested {
-            // TODO(!): The factor 2.0 is only for the sake of testing, it should be removed
-            let projection_matrix = glm::ortho(0.0, window_width, 0.0, window_height, -1.0, 1.0);
-            unsafe {
-                let uniform_location = gl.get_uniform_location(program, "projection");
-                gl.uniform_matrix_4_f32_slice(
-                    uniform_location.as_ref(),
-                    false,
-                    projection_matrix.as_slice(),
-                );
-            }
-
-            average_line_length = ((window_width - margins.left - margins.right)
-                / average_character_advance as f32) as u32;
-            line_height = window_height - font_size - margins.top;
-
-            unsafe {
-                gl.viewport(0, 0, window_width as i32, window_height as i32);
-                gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            }
-        }
-
-        // Each iteration of the loop, wrap the text in lines...
-        let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
-            .iter()
-            .map(|line| line.to_string())
-            .collect();
-
-        // ...then calculate their lengths in order to set the caret index, used to find the caret
-        // in the text to perform the usual insertions/removals/edits.
-        let line_lengths = wrapped_text.iter().map(|line| line.len());
-        let mut caret_index = line_lengths
-            .clone()
-            .take(caret.position.y as usize)
-            .sum::<usize>()
-            + caret.position.x as usize
-            + caret.position.y as usize;
-
-        for event in events {
-            match event {
-                Event::KeyDown {
-                    keycode: Some(key),
-                    keymod: Mod::NOMOD,
+        match event {
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == render_state.window().id() => match event {
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
                     ..
-                } => {
-                    match key {
-                        // Delete the character at the position of the caret
-                        Keycode::Backspace => {
-                            caret.position.x -= 1;
-                            text.remove(caret_index - 1);
+                } => *control_flow = ControlFlow::Exit,
+                WindowEvent::Resized(physical_size) => {
+                    render_state.resize(*physical_size);
+                }
+                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    render_state.resize(**new_inner_size);
+                }
+                WindowEvent::KeyboardInput { input, .. } => match input {
+                    // If the user presses Ctrl + S key, save the document
+                    KeyboardInput {
+                        state: ElementState::Pressed,
+                        virtual_keycode: Some(VirtualKeyCode::S),
+                        ..
+                    } => {
+                        if ctrl_is_pressed {
+                            custom_event_sender.send(CustomEvent::SaveFile).unwrap();
                         }
-                        // Enter a newline when pressing enter at the position of the caret
-                        Keycode::Return => {
-                            text.insert(caret_index, '\n');
-                            // Move the caret to the beginning of the next line
-                            caret.position.x = 0;
-                            caret.position.y += 1;
-                        }
-                        Keycode::Left => {
-                            if caret.position.x > 0 {
-                                caret.position.x -= 1;
-                            }
-                        }
-                        Keycode::Right => {
-                            if caret.position.x
-                                < line_lengths.clone().nth(caret.position.y as usize).unwrap()
-                                    as i32
-                            {
-                                caret.position.x += 1;
-                            }
-                        }
-                        Keycode::Up => {
-                            if caret.position.y > 0 {
-                                caret.position.y -= 1;
-                            }
-                        }
-                        Keycode::Down => {
-                            if caret.position.y < wrapped_text.len() as i32 - 1 {
-                                caret.position.y += 1;
-                            }
-                        }
-                        _ => (),
                     }
-                }
-                // Receive text input from the keyboard, then append it to the last line
-                Event::TextInput {
-                    text: input_text, ..
-                } => {
-                    // Insert the input character at the position of the caret
-                    input_buffer.push(input_text);
-                }
+                    _ => (),
+                },
                 _ => (),
-            }
-            // Recalculate the caret index at each event as it may have been modified
-            caret_index = line_lengths
-                .clone()
-                .take(caret.position.y as usize)
-                .sum::<usize>()
-                + caret.position.x as usize
-                + caret.position.y as usize;
-        }
+            },
+            Event::RedrawRequested(window_id) if window_id == render_state.window().id() => {
+                // system_state.input(&input_helper, render_state.view.x, render_state.view.y);
 
-        // Insert the text in the input buffer at the caret position and load each newly present
-        // character in the input.
-        for input in input_buffer.drain(..) {
-            for input_character in input.chars() {
-                text.insert(caret_index, input_character);
-                caret.position.x += 1;
-                caret_index = line_lengths
-                    .clone()
-                    .take(caret.position.y as usize)
-                    .sum::<usize>()
-                    + caret.position.x as usize
-                    + caret.position.y as usize;
-
-                let normalized_utf8_character = input_character.nfc().next().unwrap();
-                if characters.get(&normalized_utf8_character).is_none() {
-                    load_character(&gl, &face, &mut characters, normalized_utf8_character);
-                }
-            }
-        }
-
-        // Re-wrap the text after inserting the input buffer in text at the caret position
-        let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
-            .iter()
-            .map(|line| line.to_string())
-            .collect();
-
-        // Begin the rendering, firstly clear the screen...
-        unsafe {
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-        }
-
-        // ...then, for each line in the wrapped text...
-        for (line_index, line) in wrapped_text.iter().enumerate() {
-            let mut horizontal_origin = margins.left;
-
-            // ...draw each character therein present...
-            for (character_index, char) in line.chars().enumerate() {
-                let character = characters.get(&char).unwrap();
-
-                let x = horizontal_origin + character.bearing.x as f32;
-                let y = line_height - (character.size.y - character.bearing.y) as f32;
-
-                let width = character.size.x as f32;
-                let height = character.size.y as f32;
-
-                let vertices = [
-                    [x, y + height, 0.0, 0.0],
-                    [x, y, 0.0, 1.0],
-                    [x + width, y, 1.0, 1.0],
-                    [x, y + height, 0.0, 0.0],
-                    [x + width, y, 1.0, 1.0],
-                    [x + width, y + height, 1.0, 0.0],
-                ];
-
-                let character_bounding_box = BoundingBox {
-                    x,
-                    y,
-                    width,
-                    height,
-                };
-                if mouse_pressed {
-                    // If the mouse is pressed, check if the mouse is over any of the characters
-                    // If it is, then move the caret to that position
-                    if character_bounding_box.contains_position(mouse_position) {
-                        caret.position =
-                            IVec2::new(character_index as i32, (20 - line_index) as i32);
+                match render_state.render() {
+                    std::result::Result::Ok(_) => {}
+                    // Reconfigure the surface if lost
+                    Err(wgpu::SurfaceError::Lost) => {
+                        render_state.resize(render_state.physical_size)
                     }
+                    // The system is out of memory, we should probably quit
+                    Err(wgpu::SurfaceError::OutOfMemory) => control_flow.set_exit(),
+                    // All other errors (Outdated, Timeout) should be resolved by the next frame
+                    Err(error) => log::error!("{:?}", error),
                 }
-
-                unsafe {
-                    gl.bind_texture(TEXTURE_2D, Some(character.texture));
-
-                    let vertices_slice = std::slice::from_raw_parts(
-                        vertices.as_ptr() as *const _,
-                        vertices.len() * 4 * std::mem::size_of::<f32>(),
-                    );
-                    gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
-                }
-
-                unsafe {
-                    gl.draw_arrays(TRIANGLES, 0, 6);
-                }
-
-                // ...and then, eventually, draw the caret as well at its position
-                let position_in_text = IVec2::new(character_index as i32, line_index as i32);
-                // When the position in the text matches the one of the caret
-                if position_in_text == caret.position {
-                    let x = horizontal_origin - caret.character.bearing.x as f32;
-                    let y =
-                        line_height - (caret.character.size.y - caret.character.bearing.y) as f32;
-
-                    let width = caret.character.size.x as f32;
-                    let height = caret.character.size.y as f32;
-
-                    let vertices = [
-                        [x, y + height, 0.0, 0.0],
-                        [x, y, 0.0, 1.0],
-                        [x + width, y, 1.0, 1.0],
-                        [x, y + height, 0.0, 0.0],
-                        [x + width, y, 1.0, 1.0],
-                        [x + width, y + height, 1.0, 0.0],
-                    ];
-
-                    unsafe {
-                        gl.bind_texture(TEXTURE_2D, Some(caret.character.texture));
-
-                        let vertices_slice = std::slice::from_raw_parts(
-                            vertices.as_ptr() as *const _,
-                            vertices.len() * 4 * std::mem::size_of::<f32>(),
-                        );
-                        gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, vertices_slice);
-                    }
-
-                    unsafe {
-                        gl.draw_arrays(TRIANGLES, 0, 6);
-                    }
-                }
-
-                // Move the origin by the character advance in order to draw the characters side-to-side.
-                horizontal_origin += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
             }
-
-            // Move the line height below by the font size when each line is finished
-            line_height -= font_size;
-        }
-
-        // In the end, reset the line height to its original value
-        line_height = window_height - margins.top - font_size;
-
-        unsafe {
-            let error_code = gl.get_error();
-            if error_code != 0 {
-                panic!("OpenGL error code: {}", error_code);
+            Event::MainEventsCleared => {
+                // RedrawRequested will only trigger once, unless we manually request it.
+                render_state.window().request_redraw();
             }
+            _ => (),
         }
-
-        // Swap the windows in order to get rid of the previous frame, which is now obsolete.
-        window.gl_swap_window();
-    }
+    });
 }
 
-#[derive(Debug)]
-struct BoundingBox {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-}
-
-impl BoundingBox {
-    fn contains_position(&self, position: Vec2) -> bool {
-        position.x >= self.x
-            && position.x <= self.x + self.width
-            && position.y >= self.y
-            && position.y <= self.y + self.height
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Character {
-    texture: NativeTexture, // ID handle of the glyph texture
-    size: IVec2,            // Size of glyph
-    bearing: IVec2,         // Offset from baseline to left/top of glyph
-    advance: u32,           // Offset to advance to the next glyph
+    texture: sendable::SendRc<Texture>, // ID handle of the glyph texture
+    size: IVec2,                        // Size of glyph
+    bearing: IVec2,                     // Offset from baseline to left/top of glyph
+    advance: u32,                       // Offset to advance to the next glyph
 }
 
+#[derive(Debug, Clone)]
 struct Caret {
     position: IVec2,
     character: Character,
 }
 
-unsafe fn texture_from_glyph(gl: &glow::Context, glyph: &freetype::GlyphSlot) -> NativeTexture {
-    let texture = gl.create_texture().unwrap();
-    gl.bind_texture(TEXTURE_2D, Some(texture));
-    gl.tex_image_2d(
-        TEXTURE_2D,
-        0,
-        RED as i32, // TODO: Why `RED`?
-        glyph.bitmap().width(),
-        glyph.bitmap().rows(),
-        0,
-        RED,
-        UNSIGNED_BYTE,
-        Some(glyph.bitmap().buffer()),
-    );
-    // Set the texture parameters for wrapping on the edges
-    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as i32);
-    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_T, CLAMP_TO_EDGE as i32);
-    // Set the texture min and mag filters to use linear filtering
-    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR as i32);
-    gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR as i32);
-
-    texture
-}
-
 fn load_character(
-    gl: &glow::Context,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
     face: &freetype::Face,
     characters: &mut HashMap<char, Character>,
     normalized_utf8_character: char,
-) {
+) -> anyhow::Result<()> {
     face.load_char(
         normalized_utf8_character as usize,
         freetype::face::LoadFlag::RENDER,
-    )
-    .unwrap_or_else(|_| {
-        panic!(
-            "unable to find the character '{}' in the font",
-            normalized_utf8_character
-        )
-    });
+    )?;
     let glyph = face.glyph();
-    let texture = unsafe { texture_from_glyph(&gl, glyph) };
+    if glyph.bitmap().width() == 0 || glyph.bitmap().rows() == 0 {
+        log::debug!(
+            "Skipped the loading of the character `{}`",
+            normalized_utf8_character
+        );
+        return Ok(());
+    }
+    let texture = Texture::from_glyph(
+        device,
+        queue,
+        glyph,
+        Some(format!("Glyph Texture {}", normalized_utf8_character).as_str()),
+    );
 
     let character = Character {
-        texture,
+        texture: sendable::SendRc::new(texture),
         size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
         bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
         advance: glyph.advance().x as u32,
     };
     characters.insert(normalized_utf8_character, character);
+    Ok(())
+}
+
+/// Represents margins around a block of text.
+#[derive(Debug, Clone, Copy)]
+pub struct Margins {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
 }
