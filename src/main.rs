@@ -1,14 +1,18 @@
 use anyhow::Ok;
 use bytemuck::{Pod, Zeroable};
+use freetype::GlyphSlot;
 use glm::IVec2;
 use image::GenericImageView;
+use itertools::Itertools;
 use nalgebra_glm as glm;
+use sendable::SendRc;
 use std::{
     collections::HashMap,
     fs::File,
     io::Write,
     ops::Deref,
     rc::Rc,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -46,18 +50,16 @@ pub struct Texture {
 
 impl Texture {
     pub fn from_bytes(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        render_state: &RenderState,
         bytes: &[u8],
         label: &str,
     ) -> anyhow::Result<Self> {
         let image = image::load_from_memory(bytes)?;
-        Self::from_image(device, queue, &image, Some(label))
+        Self::from_image(&render_state, &image, Some(label))
     }
 
     pub fn from_glyph(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        render_state: &RenderState,
         glyph: &freetype::GlyphSlot,
         label: Option<&str>,
     ) -> Self {
@@ -69,18 +71,20 @@ impl Texture {
         };
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb; // TODO: Maybe replace?
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let texture = render_state
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label,
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
 
-        queue.write_texture(
+        render_state.queue.write_texture(
             wgpu::ImageCopyTexture {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
@@ -97,15 +101,17 @@ impl Texture {
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
+        let sampler = render_state
+            .device
+            .create_sampler(&wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            });
 
         Self {
             texture,
@@ -115,8 +121,8 @@ impl Texture {
     }
 
     pub fn from_image(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        render_state: &RenderState,
+
         image: &image::DynamicImage,
         label: Option<&str>,
     ) -> anyhow::Result<Self> {
@@ -129,18 +135,20 @@ impl Texture {
             depth_or_array_layers: 1,
         };
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let texture = render_state
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label,
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
 
-        queue.write_texture(
+        render_state.queue.write_texture(
             wgpu::ImageCopyTexture {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
@@ -157,15 +165,17 @@ impl Texture {
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
+        let sampler = render_state
+            .device
+            .create_sampler(&wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            });
 
         Ok(Self {
             texture,
@@ -198,7 +208,7 @@ impl Vertex {
     }
 }
 
-struct RenderState {
+pub struct RenderState {
     window: Window,
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -478,7 +488,12 @@ pub enum WindowMode {
 
 enum CustomEvent {
     SaveFile,
+    ReceivedCharacter(char),
 }
+
+#[derive(Clone, Copy)]
+struct SendGlyphSlot(GlyphSlot);
+unsafe impl Send for SendGlyphSlot {}
 
 fn main() {
     env_logger::init();
@@ -509,128 +524,122 @@ fn main() {
     let window = builder.build(&event_loop).unwrap();
 
     let mut render_state = RenderState::new(window);
-    let mut input_helper = WinitInputHelper::new();
+    // let mut input_helper = WinitInputHelper::new();
 
-    let document_path = "assets/textTest.txt";
-    let font_path = "fonts/cmunrm.ttf";
-
-    log::info!(
-        "The document '{}' will be loaded with the font '{}'",
-        document_path,
-        font_path
-    );
-
-    // Load the library Freetype for using the font glyphs
-
-    let library: freetype::Library = freetype::Library::init().unwrap();
-
-    // Load the text from the file path given
-    let mut text = std::fs::read_to_string(document_path).unwrap();
-    log::debug!("Imported the text: {:?}", text);
-    let font_face = library.new_face(font_path, 0).unwrap();
-
-    // Calculate the line length based on the average character advance
-
-    let font_size = 50.0; // Arbitrary unit of measurement
-    font_face.set_pixel_sizes(0, font_size as u32).unwrap(); // TODO: `pixel_width` is 0? Probably it means "take the default one"
-
-    let margins = Margins {
-        top: 60.0,
-        bottom: 60.0,
-        left: 30.0,
-        right: 30.0,
-    };
-
-    let mut line_height = window_size.1 as f32 - font_size - margins.top;
-
-    let mut character_advances = Vec::new();
-    for normalized_utf8_character in
-        r#"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
-            .chars()
-            .nfc()
-    {
-        font_face
-            .load_char(
-                normalized_utf8_character as usize,
-                freetype::face::LoadFlag::RENDER,
-            )
-            .unwrap();
-        let glyph = font_face.glyph();
-
-        character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
-    }
-    let average_character_advance =
-        (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32;
-
-    let mut average_line_length = ((window_size.0 as f32 - margins.left - margins.right)
-        / average_character_advance as f32) as u32;
-    log::trace!("Average line length in characters: {}", average_line_length);
-
-    let projection_matrix = glm::ortho(
-        0.0,
-        window_size.0 as f32,
-        0.0,
-        window_size.1 as f32,
-        -1.0,
-        1.0,
-    );
-
-    // Load the characters in the text from the chosen font
-
-    let mut characters: HashMap<char, Character> = HashMap::new();
-
-    for normalized_utf8_character in text.nfc() {
-        // If it hasn't already been loaded...
-        if characters.get(&normalized_utf8_character).is_some() {
-            continue;
-        } else {
-            // ...load it
-            match load_character(
-                &render_state.device,
-                &render_state.queue,
-                &font_face,
-                &mut characters,
-                normalized_utf8_character,
-            ) {
-                std::result::Result::Ok(_) => (),
-                Err(error) => panic!("error loading the character: {:?}", error),
-            };
-        }
-    }
-    log::debug!(
-        "Characters initially loaded from the text: {}",
-        characters.len()
-    );
-
-    let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
-        .iter()
-        .map(|line| line.to_string())
-        .collect();
-
-    // The caret is the '|' character, at least for now. Load it.
-
-    match load_character(
-        &render_state.device,
-        &render_state.queue,
-        &font_face,
-        &mut characters,
-        '|',
-    ) {
-        std::result::Result::Ok(_) => (),
-        Err(error) => panic!("error loading the caret character: {:?}", error),
-    };
-    let caret_character = characters.get(&'|').unwrap().clone();
-    // Set the caret position at the end of the wrapped text
-    let mut caret = Caret {
-        character: caret_character,
-        position: IVec2::new(
-            wrapped_text.last().unwrap().chars().count() as i32,
-            wrapped_text.len() as i32 - 1,
-        ),
-    };
+    let (textures_sender, textures_receiver) = std::sync::mpsc::channel();
+    let (glyphs_sender, gylphs_receiver) = std::sync::mpsc::channel();
 
     let (custom_event_sender, custom_event_receiver) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    let _logic_events_thread = std::thread::spawn(move || {
+        let document_path = "assets/textTest.txt";
+        let font_path = "fonts/cmunrm.ttf";
+
+        log::info!(
+            "The document '{}' will be loaded with the font '{}'",
+            document_path,
+            font_path
+        );
+
+        // Load the library Freetype for using the font glyphs
+
+        let library: freetype::Library = freetype::Library::init().unwrap();
+
+        // Load the text from the file path given
+        let mut text = std::fs::read_to_string(document_path).unwrap();
+        log::debug!("Imported the text: {:?}", text);
+        let font_face = library.new_face(font_path, 0).unwrap();
+
+        // Calculate the line length based on the average character advance
+
+        let font_size = 50.0; // Arbitrary unit of measurement
+        font_face.set_pixel_sizes(0, font_size as u32).unwrap(); // TODO: `pixel_width` is 0? Probably it means "take the default one"
+
+        let margins = Margins {
+            top: 60.0,
+            bottom: 60.0,
+            left: 30.0,
+            right: 30.0,
+        };
+
+        let mut line_height = window_size.1 as f32 - font_size - margins.top;
+
+        let mut character_advances = Vec::new();
+        for char in
+            r#"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
+                .chars()
+                .nfc()
+        {
+            font_face
+                .load_char(char as usize, freetype::face::LoadFlag::RENDER)
+                .unwrap();
+            let glyph = font_face.glyph();
+
+            character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
+        }
+        let average_character_advance = (character_advances.iter().sum::<u32>() as f32
+            / character_advances.len() as f32) as u32;
+
+        let mut average_line_length = ((window_size.0 as f32 - margins.left - margins.right)
+            / average_character_advance as f32) as u32;
+        log::trace!("Average line length in characters: {}", average_line_length);
+
+        let projection_matrix = glm::ortho(
+            0.0,
+            window_size.0 as f32,
+            0.0,
+            window_size.1 as f32,
+            -1.0,
+            1.0,
+        );
+
+        // Load the characters in the text from the chosen font
+
+        let mut characters: HashMap<char, Character> = HashMap::new();
+
+        let mut glyphs = Vec::new();
+        for char in text.nfc().unique() {
+            // TODO(*): ...load it
+            // TODO(!): Handle the error, don't just unwrap it
+            font_face
+                .load_char(char as usize, freetype::face::LoadFlag::RENDER)
+                .unwrap();
+            let glyph = font_face.glyph();
+            if glyph.bitmap().width() == 0 || glyph.bitmap().rows() == 0 {
+                log::debug!("Skipped the loading of the character `{}`", char);
+                continue;
+            }
+            glyphs.push(SendGlyphSlot(*glyph));
+        }
+
+        glyphs_sender.send(glyphs.clone()).unwrap();
+        let textures: Vec<Texture> = textures_receiver.recv().unwrap();
+        log::debug!("Textures received from the thread: {}", textures.len());
+
+        for (glyph, char) in glyphs.iter().zip(text.nfc().unique()) {
+            let glyph = glyph.0.clone();
+            let character = Character {
+                size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
+                bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
+                advance: glyph.advance().x as u32,
+            };
+            characters.insert(char, character).unwrap();
+        }
+
+        log::debug!(
+            "Characters initially loaded from the text: {}",
+            characters.len()
+        );
+
+        let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
+
+        // TODO(*): The caret is the '|' character, at least for now. Load it.
+        let mut caret: Caret = unsafe { std::mem::zeroed() };
+
+        let mut input_buffer = Vec::new();
+
         // Assign a value to cap the ticks-per-second
         let tps_cap: Option<u32> = Some(60);
 
@@ -641,15 +650,87 @@ fn main() {
             log::trace!("{:?}", frame_start_time);
 
             use std::result::Result::Ok;
-            match custom_event_receiver.try_recv() {
-                Ok(CustomEvent::SaveFile) => {
-                    // TODO(!): If the file creation is unsuccessful, then the user will lose their data
-                    let mut file = File::create(document_path).unwrap();
-                    file.write_all(text.clone().as_bytes()).unwrap();
-                    log::info!("The document has been successfully saved");
+            while let Ok(custom_event) = custom_event_receiver.try_recv() {
+                match custom_event {
+                    CustomEvent::SaveFile => {
+                        let mut file = File::create(document_path).unwrap();
+                        file.write_all(text.clone().as_bytes()).unwrap();
+                        log::info!("The document has been successfully saved");
+                    }
+                    CustomEvent::ReceivedCharacter(character) => {
+                        input_buffer.push(character);
+                    }
+                    _ => (),
                 }
-                _ => (),
             }
+
+            // Each iteration of the loop, wrap the text in lines...
+            let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
+                .iter()
+                .map(|line| line.to_string())
+                .collect();
+
+            // ...then calculate their lengths in order to set the caret index, used to find the caret
+            // in the text to perform the usual insertions/removals/edits.
+            let line_lengths = wrapped_text.iter().map(|line| line.len());
+            let mut caret_index = line_lengths
+                .clone()
+                .take(caret.position.y as usize)
+                .sum::<usize>()
+                + caret.position.x as usize
+                + caret.position.y as usize;
+
+            // Insert the text in the input buffer at the caret position and load each newly present
+            // character in the input.
+            for input_character in input_buffer.drain(..) {
+                text.insert(caret_index, input_character);
+                caret.position.x += 1;
+                caret_index = line_lengths
+                    .clone()
+                    .take(caret.position.y as usize)
+                    .sum::<usize>()
+                    + caret.position.x as usize
+                    + caret.position.y as usize;
+
+                let char = input_character.nfc().next().unwrap();
+                if characters.get(&char).is_none() {
+                    // TODO(*): Load the character if uninitialized
+                }
+            }
+
+            // ...then, for each line in the wrapped text...
+            for (line_index, line) in wrapped_text.iter().enumerate() {
+                let mut horizontal_origin = margins.left;
+
+                // ...draw each character therein present...
+                for (character_index, char) in line.chars().enumerate() {
+                    let character = characters.get(&char).unwrap();
+
+                    let x = horizontal_origin + character.bearing.x as f32;
+                    let y = line_height - (character.size.y - character.bearing.y) as f32;
+
+                    let width = character.size.x as f32;
+                    let height = character.size.y as f32;
+
+                    let vertices = [
+                        [x, y + height, 0.0, 0.0],
+                        [x, y, 0.0, 1.0],
+                        [x + width, y, 1.0, 1.0],
+                        [x, y + height, 0.0, 0.0],
+                        [x + width, y, 1.0, 1.0],
+                        [x + width, y + height, 1.0, 0.0],
+                    ];
+
+                    // Move the origin by the character advance in order to draw the characters side-to-side.
+                    horizontal_origin += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
+                }
+
+                // Move the line height below by the font size when each line is finished
+                line_height -= font_size;
+            }
+
+            // In the end, reset the line height to its original value
+            line_height = window_size.1 as f32 - margins.top - font_size;
 
             // Cap the ticks-per-second
             if let Some(desired_frame_time) = desired_frame_time {
@@ -662,6 +743,23 @@ fn main() {
     });
 
     event_loop.run(move |event, target, control_flow| {
+        use std::result::Result::Ok;
+        if let Ok(glyphs) = gylphs_receiver.try_recv() {
+            log::debug!("Started processing the textures to send to the thread...");
+            let textures: Vec<Texture> = glyphs
+                .iter()
+                .map(|glyph| {
+                    Texture::from_glyph(
+                        &render_state,
+                        &glyph.0,
+                        Some(format!("Glyph Texture").as_str()),
+                    )
+                })
+                .collect_vec();
+            log::debug!("Textures sent to the thread: {}", textures.len());
+            textures_sender.send(textures).unwrap();
+        }
+
         let mut ctrl_is_pressed = false;
         match event {
             Event::WindowEvent {
@@ -693,12 +791,17 @@ fn main() {
                             ..
                         },
                     ..
-                } => *control_flow = ControlFlow::Exit,
+                } => control_flow.set_exit(),
                 WindowEvent::Resized(physical_size) => {
                     render_state.resize(*physical_size);
                 }
                 WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                     render_state.resize(**new_inner_size);
+                }
+                WindowEvent::ReceivedCharacter(character) => {
+                    custom_event_sender
+                        .send(CustomEvent::ReceivedCharacter(*character))
+                        .unwrap();
                 }
                 WindowEvent::KeyboardInput { input, .. } => match input {
                     // If the user presses Ctrl + S key, save the document
@@ -741,52 +844,15 @@ fn main() {
 
 #[derive(Debug, Clone)]
 struct Character {
-    texture: sendable::SendRc<Texture>, // ID handle of the glyph texture
-    size: IVec2,                        // Size of glyph
-    bearing: IVec2,                     // Offset from baseline to left/top of glyph
-    advance: u32,                       // Offset to advance to the next glyph
+    size: IVec2,    // Size of glyph
+    bearing: IVec2, // Offset from baseline to left/top of glyph
+    advance: u32,   // Offset to advance to the next glyph
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Caret {
     position: IVec2,
     character: Character,
-}
-
-fn load_character(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    face: &freetype::Face,
-    characters: &mut HashMap<char, Character>,
-    normalized_utf8_character: char,
-) -> anyhow::Result<()> {
-    face.load_char(
-        normalized_utf8_character as usize,
-        freetype::face::LoadFlag::RENDER,
-    )?;
-    let glyph = face.glyph();
-    if glyph.bitmap().width() == 0 || glyph.bitmap().rows() == 0 {
-        log::debug!(
-            "Skipped the loading of the character `{}`",
-            normalized_utf8_character
-        );
-        return Ok(());
-    }
-    let texture = Texture::from_glyph(
-        device,
-        queue,
-        glyph,
-        Some(format!("Glyph Texture {}", normalized_utf8_character).as_str()),
-    );
-
-    let character = Character {
-        texture: sendable::SendRc::new(texture),
-        size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
-        bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
-        advance: glyph.advance().x as u32,
-    };
-    characters.insert(normalized_utf8_character, character);
-    Ok(())
 }
 
 /// Represents margins around a block of text.
