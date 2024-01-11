@@ -1,6 +1,6 @@
 use anyhow::Ok;
 use bytemuck::{Pod, Zeroable};
-use freetype::GlyphSlot;
+use freetype::{Bitmap, GlyphSlot};
 use glm::IVec2;
 use image::GenericImageView;
 use itertools::Itertools;
@@ -29,18 +29,6 @@ use winit::{
 use wgpu::{util::DeviceExt, InstanceFlags};
 use winit_input_helper::WinitInputHelper;
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct View {
-    position: Vec2,
-    scale: f32,
-    x: u16,
-    y: u16,
-}
-
-unsafe impl Pod for View {}
-unsafe impl Zeroable for View {}
-
 #[derive(Debug)]
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -58,14 +46,14 @@ impl Texture {
         Self::from_image(&render_state, &image, Some(label))
     }
 
-    pub fn from_glyph(
+    pub fn from_bitmap_data(
         render_state: &RenderState,
-        glyph: &freetype::GlyphSlot,
+        bitmap_data: BitmapData,
         label: Option<&str>,
     ) -> Self {
-        let dimensions = (glyph.bitmap().width() as u32, glyph.bitmap().rows() as u32);
+        let dimensions = (bitmap_data.width, bitmap_data.rows);
         let size = wgpu::Extent3d {
-            width: dimensions.0,
+            width: dimensions.0 / 4,
             height: dimensions.1,
             depth_or_array_layers: 1,
         };
@@ -91,10 +79,10 @@ impl Texture {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            glyph.bitmap().buffer(),
+            &bitmap_data.buffer,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * dimensions.0),
+                bytes_per_row: Some(bitmap_data.pitch),
                 rows_per_image: Some(dimensions.1),
             },
             size,
@@ -122,7 +110,6 @@ impl Texture {
 
     pub fn from_image(
         render_state: &RenderState,
-
         image: &image::DynamicImage,
         label: Option<&str>,
     ) -> anyhow::Result<Self> {
@@ -186,24 +173,30 @@ impl Texture {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    pub position: Vec2,
-    pub color: u32,
+    pub position: [f32; 2],
+    pub texture_coordinates: [f32; 2],
 }
 
-unsafe impl Pod for Vertex {}
-unsafe impl Zeroable for Vertex {}
-
 impl Vertex {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x2, 1 => Uint32];
-
     fn descriptor<'a>() -> wgpu::VertexBufferLayout<'a> {
+        use std::mem;
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBUTES,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
         }
     }
 }
@@ -215,12 +208,12 @@ pub struct RenderState {
     queue: wgpu::Queue,
     configuration: wgpu::SurfaceConfiguration,
     physical_size: winit::dpi::PhysicalSize<u32>,
-    vertices: u32,
-    vertex_buffer: wgpu::Buffer,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
     render_pipeline: wgpu::RenderPipeline,
-    view: View,
-    view_buffer: wgpu::Buffer,
-    view_bind_group: wgpu::BindGroup,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+    texture_bind_groups: HashMap<char, wgpu::BindGroup>,
+    vertex_buffers: Vec<(char, wgpu::Buffer)>,
 }
 
 impl RenderState {
@@ -289,30 +282,56 @@ impl RenderState {
             format: surface_format,
             width: inner_size.width,
             height: inner_size.height,
-            present_mode: wgpu::PresentMode::AutoVsync, // Could be surface_capabilities.present_modes[0] but Intel Arc A770 go brrr.
+            present_mode: surface_capabilities.present_modes[0], // Could be surface_capabilities.present_modes[0] but Intel Arc A770 go brrr.
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
         };
         surface.configure(&device, &configuration);
 
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("Texture Bind Group Layout"),
+            });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
-        let view = View {
-            position: Vec2::zero(),
-            scale: 1.0,
-            x: configuration.width as u16,
-            y: configuration.height as u16,
+        let camera_uniform = CameraUniform {
+            projection_matrix: glm::ortho(
+                0.0,
+                inner_size.width as f32,
+                0.0,
+                inner_size.height as f32,
+                -1.0,
+                1.0,
+            ).into(),
         };
 
-        let view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("View Buffer"),
-            contents: bytemuck::cast_slice(&[view]),
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let view_bind_group_layout =
+        let camera_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("View Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
@@ -323,21 +342,22 @@ impl RenderState {
                     },
                     count: None,
                 }],
+                label: Some("Camera Bind Group Layout"),
             });
 
-        let view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("View Bind Group"),
-            layout: &view_bind_group_layout,
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: view_buffer.as_entire_binding(),
+                resource: camera_buffer.as_entire_binding(),
             }],
+            label: Some("Camera Bind Group"),
         });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&view_bind_group_layout],
+                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -354,7 +374,10 @@ impl RenderState {
                 entry_point: "fragment_main",
                 targets: &[Some(wgpu::ColorTargetState {
                     format: configuration.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent::REPLACE,
+                        alpha: wgpu::BlendComponent::REPLACE,
+                    }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -379,17 +402,6 @@ impl RenderState {
             multiview: None,
         });
 
-        let vertices = 0;
-
-        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Vertex Buffer"),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_DST,
-            size: 1 << 24,
-            mapped_at_creation: false,
-        });
-
         Self {
             window,
             surface,
@@ -397,12 +409,12 @@ impl RenderState {
             queue,
             configuration,
             physical_size: inner_size,
-            vertices,
-            vertex_buffer,
+            texture_bind_group_layout,
+            camera_buffer,
+            camera_bind_group,
             render_pipeline,
-            view,
-            view_buffer,
-            view_bind_group,
+            texture_bind_groups: HashMap::new(),
+            vertex_buffers: Vec::new(),
         }
     }
 
@@ -416,9 +428,6 @@ impl RenderState {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        self.queue
-            .write_buffer(&self.view_buffer, 0, bytemuck::cast_slice(&[self.view]));
-
         let output = self.surface.get_current_texture()?;
 
         let view = output
@@ -441,9 +450,9 @@ impl RenderState {
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 0.0,
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
                                 a: 1.0,
                             }),
                             store: wgpu::StoreOp::Store,
@@ -455,12 +464,30 @@ impl RenderState {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.view_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..self.vertices, 0..1);
+
+            // TODO(*)
+            for (char_index, (char, vertex_buffer)) in self.vertex_buffers.iter().enumerate() {
+                let bind_group = match self.texture_bind_groups.get(char) {
+                    Some(bind_group) => bind_group,
+                    None => {
+                        if *char != ' ' {
+                            log::error!("No texture bind group for character {}", char);
+                            return Err(wgpu::SurfaceError::OutOfMemory);
+                        }
+                        continue;
+                    }
+                };
+                render_pass.set_bind_group(0, bind_group, &[]);
+                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw(0..(6 * (self.vertex_buffers.len() as u32 - 1)), 0..1);
+                log::debug!("Drawing character {} at index {}", char, char_index);
+            }
+
+
         }
 
-        // submit will accept anything that implements IntoIter
+        // `submit` will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
@@ -473,9 +500,6 @@ impl RenderState {
             self.configuration.width = new_size.width;
             self.configuration.height = new_size.height;
             self.surface.configure(&self.device, &self.configuration);
-
-            self.view.x = new_size.width as u16;
-            self.view.y = new_size.height as u16;
         }
     }
 }
@@ -491,9 +515,11 @@ enum CustomEvent {
     ReceivedCharacter(char),
 }
 
-#[derive(Clone, Copy)]
-struct SendGlyphSlot(GlyphSlot);
-unsafe impl Send for SendGlyphSlot {}
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct CameraUniform {
+    projection_matrix: [[f32; 4]; 4],
+}
 
 fn main() {
     env_logger::init();
@@ -526,8 +552,9 @@ fn main() {
     let mut render_state = RenderState::new(window);
     // let mut input_helper = WinitInputHelper::new();
 
-    let (textures_sender, textures_receiver) = std::sync::mpsc::channel();
-    let (glyphs_sender, gylphs_receiver) = std::sync::mpsc::channel();
+    let (texture_bind_group_request_sender, texture_bind_group_request_receiver) =
+        std::sync::mpsc::channel();
+    let (vertex_buffer_request_sender, vertex_buffer_request_receiver) = std::sync::mpsc::channel();
 
     let (custom_event_sender, custom_event_receiver) = std::sync::mpsc::channel();
     let _logic_events_thread = std::thread::spawn(move || {
@@ -583,51 +610,44 @@ fn main() {
             / average_character_advance as f32) as u32;
         log::trace!("Average line length in characters: {}", average_line_length);
 
-        let projection_matrix = glm::ortho(
-            0.0,
-            window_size.0 as f32,
-            0.0,
-            window_size.1 as f32,
-            -1.0,
-            1.0,
-        );
-
         // Load the characters in the text from the chosen font
 
-        let mut characters: HashMap<char, Character> = HashMap::new();
+        let mut characters_map: HashMap<char, Character> = HashMap::new();
 
-        let mut glyphs = Vec::new();
-        for char in text.nfc().unique() {
-            // TODO(*): ...load it
-            // TODO(!): Handle the error, don't just unwrap it
+        for character_to_load in text.nfc().unique() {
             font_face
-                .load_char(char as usize, freetype::face::LoadFlag::RENDER)
+                .load_char(character_to_load as usize, freetype::face::LoadFlag::RENDER)
                 .unwrap();
             let glyph = font_face.glyph();
             if glyph.bitmap().width() == 0 || glyph.bitmap().rows() == 0 {
-                log::debug!("Skipped the loading of the character `{}`", char);
+                log::debug!(
+                    "Skipped the loading of the character {:?}",
+                    character_to_load
+                );
                 continue;
             }
-            glyphs.push(SendGlyphSlot(*glyph));
-        }
-
-        glyphs_sender.send(glyphs.clone()).unwrap();
-        let textures: Vec<Texture> = textures_receiver.recv().unwrap();
-        log::debug!("Textures received from the thread: {}", textures.len());
-
-        for (glyph, char) in glyphs.iter().zip(text.nfc().unique()) {
-            let glyph = glyph.0.clone();
             let character = Character {
                 size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
                 bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
                 advance: glyph.advance().x as u32,
             };
-            characters.insert(char, character).unwrap();
+            characters_map.insert(character_to_load, character);
+            texture_bind_group_request_sender
+                .send(TextureBindGroupRequest {
+                    character_to_load,
+                    bitmap_data: BitmapData {
+                        width: glyph.bitmap().width() as u32,
+                        rows: glyph.bitmap().rows() as u32,
+                        buffer: glyph.bitmap().buffer().to_vec(),
+                        pitch: glyph.bitmap().pitch() as u32,
+                    },
+                })
+                .unwrap();
         }
 
         log::debug!(
-            "Characters initially loaded from the text: {}",
-            characters.len()
+            "Characters requested to be loaded: {}",
+            characters_map.len()
         );
 
         let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
@@ -636,18 +656,17 @@ fn main() {
             .collect();
 
         // TODO(*): The caret is the '|' character, at least for now. Load it.
-        let mut caret: Caret = unsafe { std::mem::zeroed() };
 
         let mut input_buffer = Vec::new();
 
         // Assign a value to cap the ticks-per-second
-        let tps_cap: Option<u32> = Some(60);
+        let tps_cap: Option<u32> = Some(1);
 
         let desired_frame_time = tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
 
         loop {
             let frame_start_time = Instant::now();
-            log::trace!("{:?}", frame_start_time);
+            log::trace!("Logic event loop frame start time: {:?}", frame_start_time);
 
             use std::result::Result::Ok;
             while let Ok(custom_event) = custom_event_receiver.try_recv() {
@@ -673,30 +692,19 @@ fn main() {
             // ...then calculate their lengths in order to set the caret index, used to find the caret
             // in the text to perform the usual insertions/removals/edits.
             let line_lengths = wrapped_text.iter().map(|line| line.len());
-            let mut caret_index = line_lengths
-                .clone()
-                .take(caret.position.y as usize)
-                .sum::<usize>()
-                + caret.position.x as usize
-                + caret.position.y as usize;
 
             // Insert the text in the input buffer at the caret position and load each newly present
             // character in the input.
             for input_character in input_buffer.drain(..) {
-                text.insert(caret_index, input_character);
-                caret.position.x += 1;
-                caret_index = line_lengths
-                    .clone()
-                    .take(caret.position.y as usize)
-                    .sum::<usize>()
-                    + caret.position.x as usize
-                    + caret.position.y as usize;
+                text.push(input_character);
 
                 let char = input_character.nfc().next().unwrap();
-                if characters.get(&char).is_none() {
+                if characters_map.get(&char).is_none() {
                     // TODO(*): Load the character if uninitialized
                 }
             }
+
+            let mut vertices = Vec::new();
 
             // ...then, for each line in the wrapped text...
             for (line_index, line) in wrapped_text.iter().enumerate() {
@@ -704,7 +712,17 @@ fn main() {
 
                 // ...draw each character therein present...
                 for (character_index, char) in line.chars().enumerate() {
-                    let character = characters.get(&char).unwrap();
+                    if char == ' ' {
+                        // ...and skip the space character
+                        continue;
+                    }
+                    let character = match characters_map.get(&char) {
+                        Some(character) => character,
+                        None => {
+                            log::error!("Unable to retrieve the character {:?} from the map, it is not (at least yet) loaded", char);
+                            return;
+                        }
+                    };
 
                     let x = horizontal_origin + character.bearing.x as f32;
                     let y = line_height - (character.size.y - character.bearing.y) as f32;
@@ -712,14 +730,34 @@ fn main() {
                     let width = character.size.x as f32;
                     let height = character.size.y as f32;
 
-                    let vertices = [
-                        [x, y + height, 0.0, 0.0],
-                        [x, y, 0.0, 1.0],
-                        [x + width, y, 1.0, 1.0],
-                        [x, y + height, 0.0, 0.0],
-                        [x + width, y, 1.0, 1.0],
-                        [x + width, y + height, 1.0, 0.0],
+                    let raw_vertex_data = [
+                        Vertex {
+                            position: [x, y + height],
+                            texture_coordinates: [0.0, 0.0],
+                        },
+                        Vertex {
+                            position: [x, y],
+                            texture_coordinates: [0.0, 1.0],
+                        },
+                        Vertex {
+                            position: [x + width, y],
+                            texture_coordinates: [1.0, 1.0],
+                        },
+                        Vertex {
+                            position: [x, y + height],
+                            texture_coordinates: [0.0, 0.0],
+                        },
+                        Vertex {
+                            position: [x + width, y],
+                            texture_coordinates: [1.0, 1.0],
+                        },
+                        Vertex {
+                            position: [x + width, y + height],
+                            texture_coordinates: [1.0, 0.0],
+                        },
                     ];
+
+                    vertices.push(raw_vertex_data);
 
                     // Move the origin by the character advance in order to draw the characters side-to-side.
                     horizontal_origin += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
@@ -728,6 +766,13 @@ fn main() {
                 // Move the line height below by the font size when each line is finished
                 line_height -= font_size;
             }
+
+            vertex_buffer_request_sender
+                .send(VertexBufferRequest {
+                    vertices,
+                    text: text.clone(),
+                })
+                .unwrap();
 
             // In the end, reset the line height to its original value
             line_height = window_size.1 as f32 - margins.top - font_size;
@@ -742,22 +787,83 @@ fn main() {
         }
     });
 
+    std::thread::sleep(Duration::from_secs(1));
+
     event_loop.run(move |event, target, control_flow| {
         use std::result::Result::Ok;
-        if let Ok(glyphs) = gylphs_receiver.try_recv() {
-            log::debug!("Started processing the textures to send to the thread...");
-            let textures: Vec<Texture> = glyphs
-                .iter()
-                .map(|glyph| {
-                    Texture::from_glyph(
-                        &render_state,
-                        &glyph.0,
-                        Some(format!("Glyph Texture").as_str()),
-                    )
-                })
-                .collect_vec();
-            log::debug!("Textures sent to the thread: {}", textures.len());
-            textures_sender.send(textures).unwrap();
+        while let Ok(TextureBindGroupRequest {
+            character_to_load,
+            bitmap_data,
+        }) = texture_bind_group_request_receiver.try_recv()
+        {
+            // TODO(*): ...load it
+            // TODO(!): Handle the error, don't just unwrap it
+            let texture = Texture::from_bitmap_data(
+                &render_state,
+                bitmap_data,
+                Some(format!("Glyph Texture {:?}", character_to_load).as_str()),
+            );
+
+            let texture_bind_group =
+                render_state
+                    .device
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout: &render_state.texture_bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&texture.view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                            },
+                        ],
+                        label: Some(
+                            format!("Glyph {:?} Texture Bind Group", character_to_load).as_str(),
+                        ),
+                    });
+            match render_state
+                .texture_bind_groups
+                .insert(character_to_load, texture_bind_group)
+            {
+                Some(_) => {
+                    log::warn!(
+                        "The texture bind group for the glyph {:?} has already been loaded",
+                        character_to_load
+                    );
+                }
+                None => (),
+            };
+            log::debug!(
+                "Loaded the texture bind group for the glyph {:?}",
+                character_to_load
+            );
+        }
+
+        if let Ok(VertexBufferRequest { vertices, text }) =
+            vertex_buffer_request_receiver.try_recv()
+        {
+            // Clear the vertex buffers
+            render_state.vertex_buffers.clear();
+
+            for (char_index, char) in text.chars().enumerate() {
+                let vertex_buffer =
+                    render_state
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some(&format!("Glyph {:?} Vertex Buffer", char)),
+                            contents: bytemuck::cast_slice(&vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+
+                render_state.vertex_buffers.push((char, vertex_buffer));
+                log::debug!(
+                    "Created the vertex buffer for the glyph {:?} at index {} in the text",
+                    char,
+                    char_index
+                );
+            }
         }
 
         let mut ctrl_is_pressed = false;
@@ -852,7 +958,6 @@ struct Character {
 #[derive(Debug)]
 struct Caret {
     position: IVec2,
-    character: Character,
 }
 
 /// Represents margins around a block of text.
@@ -862,4 +967,21 @@ pub struct Margins {
     pub right: f32,
     pub bottom: f32,
     pub left: f32,
+}
+
+struct TextureBindGroupRequest {
+    character_to_load: char,
+    bitmap_data: BitmapData,
+}
+
+pub struct BitmapData {
+    width: u32,
+    rows: u32,
+    buffer: Vec<u8>,
+    pitch: u32,
+}
+
+struct VertexBufferRequest {
+    vertices: Vec<[Vertex; 6]>,
+    text: String,
 }

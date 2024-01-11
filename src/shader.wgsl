@@ -1,43 +1,36 @@
-struct View {
-    position: vec2<f32>,
-    scale: f32,
-    xy: u32,
+struct CameraUniform {
+    projection_matrix: mat4x4<f32>,
 };
+@group(1) @binding(0)
+var<uniform> camera: CameraUniform;
 
-@group(0)
-@binding(0)
-var<uniform> view: View;
+struct VertexInput {
+    @location(0) position: vec2<f32>,
+    @location(1) texture_coordinates: vec2<f32>,
+}
 
 struct VertexOutput {
-    @builtin(position) clip_space: vec4<f32>,
-    @location(0) color: vec3<f32>,
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) texture_coordinates: vec2<f32>,
 };
 
 @vertex
 fn vertex_main(
-    @location(0) position: vec2<f32>,
-    @location(1) color: u32,
+    input: VertexInput,
 ) -> VertexOutput {
-    var result: VertexOutput;
+    var output: VertexOutput;
 
-    let x = (view.xy       ) & 0xffffu;
-    let y = (view.xy >> 16u) & 0xffffu;
-    let aspect = f32(y) / f32(x);
-
-    let r = (color >> 16u);
-    let g = (color >> 8u ) & 0xffu;
-    let b = (color       ) & 0xffu;
-    let normalized_color = vec3(f32(r), f32(g), f32(b)) / 255.0;
-
-    let view_space = (position - view.position) / view.scale;
-    let clip_space = vec4<f32>(view_space.x * aspect, view_space.y, 0.0, 1.0);
-
-    result.clip_space = clip_space;
-    result.color = normalized_color;
-    return result;
+    output.texture_coordinates = input.texture_coordinates;
+    output.clip_position = camera.projection_matrix * vec4<f32>(input.position, 0.0, 1.0);
+    return output;
 }
 
+@group(0) @binding(0)
+var texture_view: texture_2d<f32>;
+@group(0) @binding(1)
+var texture_sampler: sampler;
+
 @fragment
-fn fragment_main(vertex: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(vertex.color, 1.0);
+fn fragment_main(vertex_output: VertexOutput) -> @location(0) vec4<f32> {
+    return textureSample(texture_view, texture_sampler, vertex_output.texture_coordinates);
 }
