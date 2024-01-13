@@ -2,7 +2,7 @@ use anyhow::Ok;
 use bytemuck::{Pod, Zeroable};
 use freetype::{Bitmap, GlyphSlot};
 use glm::IVec2;
-use image::GenericImageView;
+use image::{GenericImageView, ImageFormat};
 use itertools::Itertools;
 use nalgebra_glm as glm;
 use sendable::SendRc;
@@ -40,10 +40,10 @@ impl Texture {
     pub fn from_bytes(
         render_state: &RenderState,
         bytes: &[u8],
-        label: &str,
+        label: Option<&str>,
     ) -> anyhow::Result<Self> {
         let image = image::load_from_memory(bytes)?;
-        Self::from_image(&render_state, &image, Some(label))
+        Self::from_image(&render_state, &image, label)
     }
 
     pub fn from_bitmap_data(
@@ -53,12 +53,11 @@ impl Texture {
     ) -> Self {
         let dimensions = (bitmap_data.width, bitmap_data.rows);
         let size = wgpu::Extent3d {
-            width: dimensions.0 / 4,
+            width: dimensions.0,
             height: dimensions.1,
             depth_or_array_layers: 1,
         };
 
-        let format = wgpu::TextureFormat::Rgba8UnormSrgb; // TODO: Maybe replace?
         let texture = render_state
             .device
             .create_texture(&wgpu::TextureDescriptor {
@@ -67,10 +66,12 @@ impl Texture {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format,
+                format: wgpu::TextureFormat::R8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
+
+        log::debug!("Created texture: {:?}", texture);
 
         render_state.queue.write_texture(
             wgpu::ImageCopyTexture {
@@ -79,11 +80,11 @@ impl Texture {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &bitmap_data.buffer,
+            &bytemuck::cast_slice(&bitmap_data.buffer),
             wgpu::ImageDataLayout {
                 offset: 0,
                 bytes_per_row: Some(bitmap_data.pitch),
-                rows_per_image: Some(dimensions.1),
+                rows_per_image: Some(bitmap_data.rows),
             },
             size,
         );
@@ -95,7 +96,7 @@ impl Texture {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Linear,
+                mag_filter: wgpu::FilterMode::Nearest,
                 min_filter: wgpu::FilterMode::Nearest,
                 mipmap_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
@@ -145,7 +146,7 @@ impl Texture {
             &rgba,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * dimensions.0),
+                bytes_per_row: Some(dimensions.0),
                 rows_per_image: Some(dimensions.1),
             },
             size,
@@ -483,8 +484,6 @@ impl RenderState {
                 render_pass.draw(0..(6 * (self.vertex_buffers.len() as u32 - 1)), 0..1);
                 log::debug!("Drawing character {} at index {}", char, char_index);
             }
-
-
         }
 
         // `submit` will accept anything that implements IntoIter
@@ -619,7 +618,10 @@ fn main() {
                 .load_char(character_to_load as usize, freetype::face::LoadFlag::RENDER)
                 .unwrap();
             let glyph = font_face.glyph();
-            if glyph.bitmap().width() == 0 || glyph.bitmap().rows() == 0 {
+            glyph.render_glyph(freetype::RenderMode::Mono).unwrap();
+            let glyph_bitmap = glyph.bitmap();
+            // log::trace!("Pixel mode of the gyph: {:?}", glyph_bitmap.pixel_mode());
+            if glyph_bitmap.width() == 0 || glyph_bitmap.rows() == 0 {
                 log::debug!(
                     "Skipped the loading of the character {:?}",
                     character_to_load
@@ -627,7 +629,7 @@ fn main() {
                 continue;
             }
             let character = Character {
-                size: IVec2::new(glyph.bitmap().width(), glyph.bitmap().rows()),
+                size: IVec2::new(glyph_bitmap.width(), glyph_bitmap.rows()),
                 bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
                 advance: glyph.advance().x as u32,
             };
@@ -636,10 +638,10 @@ fn main() {
                 .send(TextureBindGroupRequest {
                     character_to_load,
                     bitmap_data: BitmapData {
-                        width: glyph.bitmap().width() as u32,
-                        rows: glyph.bitmap().rows() as u32,
-                        buffer: glyph.bitmap().buffer().to_vec(),
-                        pitch: glyph.bitmap().pitch() as u32,
+                        width: glyph_bitmap.width() as u32,
+                        rows: glyph_bitmap.rows() as u32,
+                        buffer: glyph_bitmap.buffer().to_vec(),
+                        pitch: glyph_bitmap.pitch() as u32,
                     },
                 })
                 .unwrap();

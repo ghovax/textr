@@ -7,7 +7,6 @@ description = "TeX-inspired formatting app"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-freetype-rs = "0.34.1"
 unicode-normalization = "0.1.22"
 # glad-gl = { path = "./build/glad-gl" }
 nalgebra-glm = "0.18.0"
@@ -32,6 +31,7 @@ sendable = "0.6.1"
 anyhow = "1.0.79"
 image = "0.24.7"
 cfg-if = "1.0.0"
+freetype-rs = "0.34.1"
 
 [profile.release]
 debug = true
@@ -44,4 +44,4 @@ version = "0.1.0"
 resources = []
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
