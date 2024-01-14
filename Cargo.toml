@@ -44,4 +44,4 @@ version = "0.1.0"
 resources = []
 
 [profile.dev]
-opt-level = 0
+opt-level = 1

@@ -2,7 +2,10 @@ use anyhow::Ok;
 use bytemuck::{Pod, Zeroable};
 use freetype::{Bitmap, GlyphSlot};
 use glm::IVec2;
-use image::{GenericImageView, ImageFormat};
+use image::{
+    DynamicImage, EncodableLayout, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma,
+    Rgba32FImage, RgbaImage,
+};
 use itertools::Itertools;
 use nalgebra_glm as glm;
 use sendable::SendRc;
@@ -37,92 +40,17 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn from_bytes(
-        render_state: &RenderState,
-        bytes: &[u8],
-        label: Option<&str>,
-    ) -> anyhow::Result<Self> {
-        let image = image::load_from_memory(bytes)?;
-        Self::from_image(&render_state, &image, label)
-    }
-
     pub fn from_bitmap_data(
         render_state: &RenderState,
         bitmap_data: BitmapData,
         label: Option<&str>,
-    ) -> Self {
-        let dimensions = (bitmap_data.width, bitmap_data.rows);
-        let size = wgpu::Extent3d {
-            width: dimensions.0,
-            height: dimensions.1,
-            depth_or_array_layers: 1,
-        };
-
-        let texture = render_state
-            .device
-            .create_texture(&wgpu::TextureDescriptor {
-                label,
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::R8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-
-        log::debug!("Created texture: {:?}", texture);
-
-        render_state.queue.write_texture(
-            wgpu::ImageCopyTexture {
-                aspect: wgpu::TextureAspect::All,
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            &bytemuck::cast_slice(&bitmap_data.buffer),
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(bitmap_data.pitch),
-                rows_per_image: Some(bitmap_data.rows),
-            },
-            size,
-        );
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = render_state
-            .device
-            .create_sampler(&wgpu::SamplerDescriptor {
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
-                ..Default::default()
-            });
-
-        Self {
-            texture,
-            view,
-            sampler,
-        }
-    }
-
-    pub fn from_image(
-        render_state: &RenderState,
-        image: &image::DynamicImage,
-        label: Option<&str>,
     ) -> anyhow::Result<Self> {
-        let rgba = image.to_rgba8();
-        let dimensions = image.dimensions();
-
         let size = wgpu::Extent3d {
-            width: dimensions.0,
-            height: dimensions.1,
+            width: bitmap_data.width,
+            height: bitmap_data.rows,
             depth_or_array_layers: 1,
         };
-        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let format = wgpu::TextureFormat::R8Unorm;
         let texture = render_state
             .device
             .create_texture(&wgpu::TextureDescriptor {
@@ -132,8 +60,11 @@ impl Texture {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[format],
             });
 
         render_state.queue.write_texture(
@@ -143,23 +74,26 @@ impl Texture {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &rgba,
+            &bitmap_data.buffer,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(dimensions.0),
-                rows_per_image: Some(dimensions.1),
+                bytes_per_row: Some(bitmap_data.pitch),
+                rows_per_image: Some(bitmap_data.rows),
             },
             size,
         );
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(format),
+            ..Default::default()
+        });
         let sampler = render_state
             .device
             .create_sampler(&wgpu::SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Linear,
+                mag_filter: wgpu::FilterMode::Nearest,
                 min_filter: wgpu::FilterMode::Nearest,
                 mipmap_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
@@ -322,7 +256,8 @@ impl RenderState {
                 inner_size.height as f32,
                 -1.0,
                 1.0,
-            ).into(),
+            )
+            .into(),
         };
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -375,10 +310,7 @@ impl RenderState {
                 entry_point: "fragment_main",
                 targets: &[Some(wgpu::ColorTargetState {
                     format: configuration.format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
-                    }),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -467,22 +399,32 @@ impl RenderState {
             render_pass.set_pipeline(&self.render_pipeline);
 
             // TODO(*)
-            for (char_index, (char, vertex_buffer)) in self.vertex_buffers.iter().enumerate() {
-                let bind_group = match self.texture_bind_groups.get(char) {
+            let mut character_count = 0;
+            for (character_index, (character, vertex_buffer)) in
+                self.vertex_buffers.iter().enumerate()
+            {
+                let bind_group = match self.texture_bind_groups.get(character) {
                     Some(bind_group) => bind_group,
                     None => {
-                        if *char != ' ' {
-                            log::error!("No texture bind group for character {}", char);
+                        if *character != ' ' {
+                            log::error!("No texture bind group for character {}", character);
                             return Err(wgpu::SurfaceError::OutOfMemory);
                         }
                         continue;
                     }
                 };
+                character_count += 1;
                 render_pass.set_bind_group(0, bind_group, &[]);
+
                 render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.draw(0..(6 * (self.vertex_buffers.len() as u32 - 1)), 0..1);
-                log::debug!("Drawing character {} at index {}", char, char_index);
+
+                log::debug!(
+                    "Drawing character {} at index {}",
+                    character,
+                    character_index
+                );
+                render_pass.draw(6 * (character_count - 1)..6 * character_count, 0..1);
             }
         }
 
@@ -590,13 +532,13 @@ fn main() {
         let mut line_height = window_size.1 as f32 - font_size - margins.top;
 
         let mut character_advances = Vec::new();
-        for char in
+        for character in
             r#"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
                 .chars()
                 .nfc()
         {
             font_face
-                .load_char(char as usize, freetype::face::LoadFlag::RENDER)
+                .load_char(character as usize, freetype::face::LoadFlag::RENDER)
                 .unwrap();
             let glyph = font_face.glyph();
 
@@ -700,8 +642,8 @@ fn main() {
             for input_character in input_buffer.drain(..) {
                 text.push(input_character);
 
-                let char = input_character.nfc().next().unwrap();
-                if characters_map.get(&char).is_none() {
+                let character = input_character.nfc().next().unwrap();
+                if characters_map.get(&character).is_none() {
                     // TODO(*): Load the character if uninitialized
                 }
             }
@@ -713,24 +655,24 @@ fn main() {
                 let mut horizontal_origin = margins.left;
 
                 // ...draw each character therein present...
-                for (character_index, char) in line.chars().enumerate() {
-                    if char == ' ' {
+                for (character_index, character) in line.chars().enumerate() {
+                    if character == ' ' {
                         // ...and skip the space character
                         continue;
                     }
-                    let character = match characters_map.get(&char) {
+                    let character_data = match characters_map.get(&character) {
                         Some(character) => character,
                         None => {
-                            log::error!("Unable to retrieve the character {:?} from the map, it is not (at least yet) loaded", char);
+                            log::error!("Unable to retrieve the character {:?} from the map, it is not (at least yet) loaded", character);
                             return;
                         }
                     };
 
-                    let x = horizontal_origin + character.bearing.x as f32;
-                    let y = line_height - (character.size.y - character.bearing.y) as f32;
+                    let x = horizontal_origin + character_data.bearing.x as f32;
+                    let y = line_height - (character_data.size.y - character_data.bearing.y) as f32;
 
-                    let width = character.size.x as f32;
-                    let height = character.size.y as f32;
+                    let width = character_data.size.x as f32;
+                    let height = character_data.size.y as f32;
 
                     let raw_vertex_data = [
                         Vertex {
@@ -762,7 +704,7 @@ fn main() {
                     vertices.push(raw_vertex_data);
 
                     // Move the origin by the character advance in order to draw the characters side-to-side.
-                    horizontal_origin += (character.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
+                    horizontal_origin += (character_data.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
                 }
 
                 // Move the line height below by the font size when each line is finished
@@ -804,7 +746,8 @@ fn main() {
                 &render_state,
                 bitmap_data,
                 Some(format!("Glyph Texture {:?}", character_to_load).as_str()),
-            );
+            )
+            .unwrap();
 
             let texture_bind_group =
                 render_state
@@ -849,21 +792,21 @@ fn main() {
             // Clear the vertex buffers
             render_state.vertex_buffers.clear();
 
-            for (char_index, char) in text.chars().enumerate() {
+            for (character_index, character) in text.chars().enumerate() {
                 let vertex_buffer =
                     render_state
                         .device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some(&format!("Glyph {:?} Vertex Buffer", char)),
+                            label: Some(&format!("Glyph {:?} Vertex Buffer", character)),
                             contents: bytemuck::cast_slice(&vertices),
                             usage: wgpu::BufferUsages::VERTEX,
                         });
 
-                render_state.vertex_buffers.push((char, vertex_buffer));
+                render_state.vertex_buffers.push((character, vertex_buffer));
                 log::debug!(
                     "Created the vertex buffer for the glyph {:?} at index {} in the text",
-                    char,
-                    char_index
+                    character,
+                    character_index
                 );
             }
         }
