@@ -148,7 +148,12 @@ pub struct RenderState {
     render_pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_groups: HashMap<char, wgpu::BindGroup>,
-    vertex_buffers: Vec<(char, wgpu::Buffer)>,
+    vertex_buffers: Vec<CharacterData>,
+}
+
+struct CharacterData {
+    character: char,
+    vertex_buffer: wgpu::Buffer,
 }
 
 impl RenderState {
@@ -400,8 +405,13 @@ impl RenderState {
 
             // TODO(*)
             let mut character_count = 0;
-            for (character_index, (character, vertex_buffer)) in
-                self.vertex_buffers.iter().enumerate()
+            for (
+                character_index,
+                CharacterData {
+                    character,
+                    vertex_buffer,
+                },
+            ) in self.vertex_buffers.iter().enumerate()
             {
                 let bind_group = match self.texture_bind_groups.get(character) {
                     Some(bind_group) => bind_group,
@@ -413,19 +423,15 @@ impl RenderState {
                         continue;
                     }
                 };
-                character_count += 1;
                 render_pass.set_bind_group(0, bind_group, &[]);
 
                 render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
-                log::debug!(
-                    "Drawing character {} at index {}",
-                    character,
-                    character_index
-                );
+                character_count += 1;
                 render_pass.draw(6 * (character_count - 1)..6 * character_count, 0..1);
             }
+            log::debug!("Finished drawing the characters");
         }
 
         // `submit` will accept anything that implements IntoIter
@@ -468,7 +474,7 @@ fn main() {
     let event_loop: EventLoop<_> = EventLoopBuilder::<CustomEvent>::with_user_event().build();
     let mut builder = WindowBuilder::new().with_title("TeXtr");
 
-    let mut window_size = (800, 600);
+    let mut window_size = (1800, 600);
     let window_mode = WindowMode::Windowed(window_size.0, window_size.1);
 
     match window_mode {
@@ -496,6 +502,8 @@ fn main() {
     let (texture_bind_group_request_sender, texture_bind_group_request_receiver) =
         std::sync::mpsc::channel();
     let (vertex_buffer_request_sender, vertex_buffer_request_receiver) = std::sync::mpsc::channel();
+
+    // Logic events thread
 
     let (custom_event_sender, custom_event_receiver) = std::sync::mpsc::channel();
     let _logic_events_thread = std::thread::spawn(move || {
@@ -532,8 +540,9 @@ fn main() {
         let mut line_height = window_size.1 as f32 - font_size - margins.top;
 
         let mut character_advances = Vec::new();
+        let mut space_character_advance = 0;
         for character in
-            r#"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
+            r#" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#
                 .chars()
                 .nfc()
         {
@@ -541,6 +550,9 @@ fn main() {
                 .load_char(character as usize, freetype::face::LoadFlag::RENDER)
                 .unwrap();
             let glyph = font_face.glyph();
+            if character == ' ' {
+                space_character_advance = glyph.advance().x as u32;
+            }
 
             character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
         }
@@ -549,7 +561,7 @@ fn main() {
 
         let mut average_line_length = ((window_size.0 as f32 - margins.left - margins.right)
             / average_character_advance as f32) as u32;
-        log::trace!("Average line length in characters: {}", average_line_length);
+        log::debug!("Average line length in characters: {}", average_line_length);
 
         // Load the characters in the text from the chosen font
 
@@ -563,19 +575,19 @@ fn main() {
             glyph.render_glyph(freetype::RenderMode::Mono).unwrap();
             let glyph_bitmap = glyph.bitmap();
             // log::trace!("Pixel mode of the gyph: {:?}", glyph_bitmap.pixel_mode());
-            if glyph_bitmap.width() == 0 || glyph_bitmap.rows() == 0 {
-                log::debug!(
-                    "Skipped the loading of the character {:?}",
-                    character_to_load
-                );
-                continue;
-            }
             let character = Character {
                 size: IVec2::new(glyph_bitmap.width(), glyph_bitmap.rows()),
                 bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
                 advance: glyph.advance().x as u32,
             };
             characters_map.insert(character_to_load, character);
+            if glyph_bitmap.width() == 0 || glyph_bitmap.rows() == 0 {
+                log::debug!(
+                    "Skipped the initial loading of the character {:?}",
+                    character_to_load
+                );
+                continue;
+            }
             texture_bind_group_request_sender
                 .send(TextureBindGroupRequest {
                     character_to_load,
@@ -604,7 +616,7 @@ fn main() {
         let mut input_buffer = Vec::new();
 
         // Assign a value to cap the ticks-per-second
-        let tps_cap: Option<u32> = Some(1);
+        let tps_cap: Option<u32> = Some(10);
 
         let desired_frame_time = tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
 
@@ -616,14 +628,18 @@ fn main() {
             while let Ok(custom_event) = custom_event_receiver.try_recv() {
                 match custom_event {
                     CustomEvent::SaveFile => {
+                        // TODO(*): Save the text to the file path given, but if it fails, the file is overwritten and
+                        // all content is lost
                         let mut file = File::create(document_path).unwrap();
                         file.write_all(text.clone().as_bytes()).unwrap();
-                        log::info!("The document has been successfully saved");
+                        log::info!(
+                            "The document has been successfully saved to the path: {:?}",
+                            document_path
+                        );
                     }
                     CustomEvent::ReceivedCharacter(character) => {
                         input_buffer.push(character);
                     }
-                    _ => (),
                 }
             }
 
@@ -648,7 +664,9 @@ fn main() {
                 }
             }
 
-            let mut vertices = Vec::new();
+            // Vertices placing algorithm
+
+            let mut raw_vertices_data = Vec::new();
 
             // ...then, for each line in the wrapped text...
             for (line_index, line) in wrapped_text.iter().enumerate() {
@@ -656,8 +674,10 @@ fn main() {
 
                 // ...draw each character therein present...
                 for (character_index, character) in line.chars().enumerate() {
+                    // ...and skip the space character
                     if character == ' ' {
-                        // ...and skip the space character
+                        horizontal_origin += (space_character_advance >> 6) as f32;
+
                         continue;
                     }
                     let character_data = match characters_map.get(&character) {
@@ -701,10 +721,11 @@ fn main() {
                         },
                     ];
 
-                    vertices.push(raw_vertex_data);
+                    raw_vertices_data.push(raw_vertex_data);
 
                     // Move the origin by the character advance in order to draw the characters side-to-side.
-                    horizontal_origin += (character_data.advance >> 6) as f32; // Bitshift by 6 to get value in pixels (2^6 = 64)
+                    horizontal_origin += (character_data.advance >> 6) as f32;
+                    // Bitshift by 6 to get value in pixels (2^6 = 64)
                 }
 
                 // Move the line height below by the font size when each line is finished
@@ -713,7 +734,7 @@ fn main() {
 
             vertex_buffer_request_sender
                 .send(VertexBufferRequest {
-                    vertices,
+                    vertices: raw_vertices_data,
                     text: text.clone(),
                 })
                 .unwrap();
@@ -731,7 +752,7 @@ fn main() {
         }
     });
 
-    std::thread::sleep(Duration::from_secs(1));
+    // std::thread::sleep(Duration::from_secs(1));
 
     event_loop.run(move |event, target, control_flow| {
         use std::result::Result::Ok;
@@ -780,10 +801,7 @@ fn main() {
                 }
                 None => (),
             };
-            log::debug!(
-                "Loaded the texture bind group for the glyph {:?}",
-                character_to_load
-            );
+            // log::debug!("Loaded the texture bind group for the glyph {:?}", character_to_load);
         }
 
         if let Ok(VertexBufferRequest { vertices, text }) =
@@ -802,12 +820,11 @@ fn main() {
                             usage: wgpu::BufferUsages::VERTEX,
                         });
 
-                render_state.vertex_buffers.push((character, vertex_buffer));
-                log::debug!(
-                    "Created the vertex buffer for the glyph {:?} at index {} in the text",
+                render_state.vertex_buffers.push(CharacterData {
                     character,
-                    character_index
-                );
+                    vertex_buffer,
+                });
+                // log::debug!("Created the vertex buffer for the glyph {:?} at index {} in the text", character, character_index);
             }
         }
 
@@ -893,7 +910,7 @@ fn main() {
     });
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct Character {
     size: IVec2,    // Size of glyph
     bearing: IVec2, // Offset from baseline to left/top of glyph
