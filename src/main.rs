@@ -8,7 +8,7 @@
 
 use crate::{
     graphics::{Texture, Vertex},
-    text::{Character, Margins},
+    text::{CharacterGeometry, Margins},
 };
 use clap::Parser;
 use itertools::Itertools;
@@ -71,6 +71,21 @@ enum LogicThreadEvent {
     RequestRendering,
 }
 
+/// The size of the window.
+#[derive(Debug, Copy, Clone)]
+struct WindowSize((u32, u32));
+
+impl std::str::FromStr for WindowSize {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let mut values = s.split(',');
+        let width = values.next().unwrap().parse()?;
+        let height = values.next().unwrap().parse()?;
+        Ok(WindowSize((width, height)))
+    }
+}
+
 #[derive(Parser)]
 #[command(version, about)]
 /// The command line interface arguments which are automatically parsed by the `clap` library.
@@ -82,8 +97,8 @@ struct CliArguments {
     #[arg(long)]
     font: PathBuf,
     /// The size of the window (it is a vector of two values).
-    #[arg(long, value_parser, value_delimiter = ',')]
-    window_size: Vec<u32>,
+    #[arg(long, value_parser = clap::value_parser!(WindowSize))]
+    window_size: WindowSize,
     /// The font size.
     #[arg(long)]
     font_size: u32,
@@ -113,7 +128,7 @@ impl std::error::Error for SkippedCharacter {}
 fn load_character(
     font_face: &freetype::Face,
     character_to_load: char,
-    characters_map: &mut HashMap<char, Character>,
+    characters_map: &mut HashMap<char, CharacterGeometry>,
     logic_events_sender: &crossbeam_channel::Sender<LogicThreadEvent>,
 ) -> Result<(), anyhow::Error> {
     // Load the selected character
@@ -123,7 +138,7 @@ fn load_character(
     let glyph_bitmap = glyph.bitmap();
 
     // Associate to each character the geometry
-    let character = Character {
+    let character = CharacterGeometry {
         size: IVec2::new(glyph_bitmap.width(), glyph_bitmap.rows()),
         bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
         advance: glyph.advance().x as u32,
@@ -148,22 +163,87 @@ fn load_character(
     Ok(())
 }
 
+/// By iterating on a wide range of possible characters we are able to estimate the average
+/// line length in order to render properly on to the window.
+fn estimate_average_line_length(
+    font_face: &freetype::Face,
+    window_width: u32,
+    margins: Margins,
+) -> u32 {
+    let mut character_advances = Vec::new();
+
+    for character in COMMON_CHARACTERS.chars().nfc() {
+        // Each character is loaded according to its character code which is obtained from the `nfc` function
+        font_face
+            .load_char(character as usize, freetype::face::LoadFlag::RENDER)
+            .unwrap();
+        let glyph = font_face.glyph();
+
+        character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
+    }
+    let average_character_advance =
+        (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32;
+
+    let average_line_length = ((window_width as f32 - margins.left - margins.right)
+        / average_character_advance as f32) as u32;
+    log::debug!("Average line length in characters: {}", average_line_length);
+
+    average_line_length
+}
+
+/// Calculate the positions of the vertices for the given glyph.
+fn glyph_vertices(x: f32, y: f32, width: f32, height: f32) -> [Vertex; 6] {
+    [
+        // Upper triangle
+        Vertex {
+            position: [x, y + height],
+            texture_coordinates: [0.0, 0.0],
+        },
+        Vertex {
+            position: [x, y],
+            texture_coordinates: [0.0, 1.0],
+        },
+        Vertex {
+            position: [x + width, y],
+            texture_coordinates: [1.0, 1.0],
+        },
+        // Lower triangle
+        Vertex {
+            position: [x, y + height],
+            texture_coordinates: [0.0, 0.0],
+        },
+        Vertex {
+            position: [x + width, y],
+            texture_coordinates: [1.0, 1.0],
+        },
+        Vertex {
+            position: [x + width, y + height],
+            texture_coordinates: [1.0, 0.0],
+        },
+    ]
+}
+
 fn main() {
     // Initialize the logging processes and read the environment variable `RUST_LOG`
     // in order to set the level for filtering the events
     env_logger::init();
 
     // Parse the command line arguments which were specified
-    let cli_arguments = CliArguments::parse();
-    let document_path = cli_arguments.document;
-    let font_path = cli_arguments.font;
-    let [window_width, window_height] = cli_arguments.window_size[0..2] else {
-        unreachable!()
-    };
-    let font_size = cli_arguments.font_size as f32;
-    let margins = cli_arguments.margins;
+    let CliArguments {
+        document: document_path,
+        font: font_path,
+        window_size,
+        font_size,
+        margins,
+    } = CliArguments::parse();
 
-    log::info!("Loading the text with the margins {:?} and font size {}.", margins, font_size);
+    let (window_width, window_height) = window_size.0;
+
+    log::info!(
+        "Loading the text with the margins {:?} and font size {}.",
+        margins,
+        font_size
+    );
 
     // Create the event loop which can accept custom events generated by the user
     let event_loop: EventLoop<_> = EventLoopBuilder::<RenderThreadEvent>::with_user_event().build();
@@ -223,38 +303,25 @@ fn main() {
         let font_face = library.new_face(font_path, 0).unwrap();
 
         // Configure the pixel size of the font (in arbitrary units of measurement)
-        font_face.set_pixel_sizes(0, font_size as u32).unwrap();
+        font_face.set_pixel_sizes(0, font_size).unwrap();
 
         // Calculate the line length based on the average character advance and the size of the
         // window, respecting the margins
-        let mut line_height = window_height as f32 - font_size - margins.top;
+        let mut line_height = window_height as f32 - font_size as f32 - margins.top;
 
-        let mut character_advances = Vec::new();
-        let mut space_character_advance = 0;
+        // Calculate the advance of the space character separately as it is handled
+        // differently because it doesn't have a texture
+        font_face
+            .load_char(' ' as usize, freetype::face::LoadFlag::RENDER)
+            .unwrap();
+        let glyph = font_face.glyph();
+        let space_character_advance = (glyph.advance().x as u32) >> 6;
 
-        // By iterating on a wide range of possible characters we are able to estimate the average
-        // character advance
-        for character in COMMON_CHARACTERS.chars().nfc() {
-            // Each character is loaded according to its character code which is obtained from the `nfc` function
-            font_face
-                .load_char(character as usize, freetype::face::LoadFlag::RENDER)
-                .unwrap();
-            let glyph = font_face.glyph();
-            if character == ' ' {
-                space_character_advance = glyph.advance().x as u32;
-            }
-
-            character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by 6 to convert in pixels
-        }
-        let average_character_advance = (character_advances.iter().sum::<u32>() as f32
-            / character_advances.len() as f32) as u32;
-
-        let average_line_length = ((window_width as f32 - margins.left - margins.right)
-            / average_character_advance as f32) as u32;
-        log::debug!("Average line length in characters: {}", average_line_length);
+        // Estimate the average line length based on the window width and the margins
+        let average_line_length = estimate_average_line_length(&font_face, window_width, margins);
 
         // Load the characters in the text from the chosen font
-        let mut characters_map: HashMap<char, Character> = HashMap::new();
+        let mut characters_map: HashMap<char, CharacterGeometry> = HashMap::new();
 
         for character_to_load in text.nfc().unique() {
             if load_character(
@@ -265,7 +332,7 @@ fn main() {
             )
             .is_err()
             {
-                log::debug!(
+                log::warn!(
                     "Skipped the initial loading of the character {:?}",
                     character_to_load
                 );
@@ -333,7 +400,7 @@ fn main() {
                     )
                     .is_err()
                     {
-                        log::debug!(
+                        log::warn!(
                             "Skipped the dynamic loading of the character {:?}",
                             character_to_load
                         );
@@ -361,7 +428,7 @@ fn main() {
                     for character in line.chars() {
                         // ...and skip the space character
                         if character == ' ' {
-                            horizontal_origin += (space_character_advance >> 6) as f32;
+                            horizontal_origin += space_character_advance as f32;
 
                             continue;
                         }
@@ -380,18 +447,8 @@ fn main() {
                         let width = character_data.size.x as f32;
                         let height = character_data.size.y as f32;
 
-                        #[rustfmt::skip]
                         // The positions of the two triangles making up a single text glyph
-                        let raw_vertex_data = [
-                            // Upper triangle
-                            Vertex { position: [x, y + height], texture_coordinates: [0.0, 0.0], },
-                            Vertex { position: [x, y], texture_coordinates: [0.0, 1.0], },
-                            Vertex { position: [x + width, y], texture_coordinates: [1.0, 1.0], },
-                            // Lower triangle
-                            Vertex { position: [x, y + height], texture_coordinates: [0.0, 0.0], },
-                            Vertex { position: [x + width, y], texture_coordinates: [1.0, 1.0], },
-                            Vertex { position: [x + width, y + height], texture_coordinates: [1.0, 0.0], },
-                        ];
+                        let raw_vertex_data = glyph_vertices(x, y, width, height);
 
                         raw_vertices_data.push(raw_vertex_data);
 
@@ -401,7 +458,7 @@ fn main() {
                     }
 
                     // Move the line height below by the font size when each line is finished
-                    line_height -= font_size;
+                    line_height -= font_size as f32;
                 }
 
                 logic_events_sender
@@ -424,7 +481,7 @@ fn main() {
             }
 
             // In the end, reset the line height to its original value
-            line_height = window_height as f32 - margins.top - font_size;
+            line_height = window_height as f32 - margins.top - font_size as f32;
 
             // Cap the ticks-per-second
             if let Some(desired_frame_time) = desired_frame_time {
@@ -441,12 +498,13 @@ fn main() {
 
     // Run the event loop in the main thread
     event_loop.run(move |event, _, control_flow| {
+        control_flow.set_wait();
         // Each iteration of the loop fetch the logic thread events
         while let Ok(logic_events) = logic_events_receiver.try_recv() {
             match logic_events {
                 // It can either be  update the vertex buffers...
                 LogicThreadEvent::UpdateVertexBuffers { vertices, text } => {
-                    render_state.update_vertex_buffers(vertices, text)
+                    render_state.update_characters(vertices, text)
                 }
                 // ...or to load the new textures
                 LogicThreadEvent::LoadTextureBindGroup {
@@ -529,6 +587,9 @@ fn main() {
                             render_events_sender
                                 .send(RenderThreadEvent::SaveFile)
                                 .unwrap();
+                            log::debug!(
+                                "Ctrl + S pressed, the document has been requested to be saved"
+                            );
                         }
                     }
                     _ => (),

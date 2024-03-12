@@ -21,6 +21,7 @@ anyhow = "1.0.79"
 freetype-rs = "0.36.0"
 clap = { version = "4.5.1", features = ["derive"] }
 crossbeam-channel = "0.5.12"
+similar = "2.4.0"
 
 [profile.release]
 debug = true

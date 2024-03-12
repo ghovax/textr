@@ -4,7 +4,7 @@ use nalgebra_glm::IVec2;
 
 /// All the configuration and properties of a glyph.
 #[derive(Debug, Clone, Default)]
-pub struct Character {
+pub struct CharacterGeometry {
     pub size: IVec2,    // Size of glyph
     pub bearing: IVec2, // Offset from baseline to left/top of glyph
     pub advance: u32,   // Offset to advance to the next glyph

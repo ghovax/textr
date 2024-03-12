@@ -137,14 +137,16 @@ pub struct RenderState {
     camera_bind_group: wgpu::BindGroup,
     render_pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
+    /// The cache for the textures. It allows a retrieval with the associated character.
     texture_bind_groups: HashMap<char, wgpu::BindGroup>,
-    vertex_buffers: Vec<CharacterData>,
+    /// The characters present in the text and the their associated vertex buffers.
+    characters: Vec<Character>,
 }
 
 /// Represents the association of a character to a vertex buffer.
 /// In order to retrieve the character once having accessed the hashmap, it is saved
 /// together with the buffer.
-struct CharacterData {
+struct Character {
     character: char,
     vertex_buffer: wgpu::Buffer,
 }
@@ -351,7 +353,7 @@ impl RenderState {
             camera_bind_group,
             render_pipeline,
             texture_bind_groups: HashMap::new(),
-            vertex_buffers: Vec::new(),
+            characters: Vec::new(),
         })
     }
 
@@ -385,11 +387,11 @@ impl RenderState {
         };
     }
 
-    /// Update the vertex buffers with the new vertices. This operation is quite expensive
+    /// Update the vertex buffers associated with the characters with the new vertices. This operation is quite expensive
     /// as the buffers are created from scratch, so a different approach might be needed.
-    pub fn update_vertex_buffers(&mut self, vertices: Vec<[Vertex; 6]>, text: String) {
+    pub fn update_characters(&mut self, vertices: Vec<[Vertex; 6]>, text: String) {
         // Remove the previous vertex buffers
-        self.vertex_buffers.clear();
+        self.characters.clear();
 
         for character in text.chars() {
             let vertex_buffer = self
@@ -400,7 +402,7 @@ impl RenderState {
                     usage: wgpu::BufferUsages::VERTEX,
                 });
 
-            self.vertex_buffers.push(CharacterData {
+            self.characters.push(Character {
                 character,
                 vertex_buffer,
             });
@@ -453,10 +455,10 @@ impl RenderState {
             render_pass.set_pipeline(&self.render_pipeline);
 
             let mut character_count = 0;
-            for CharacterData {
+            for Character {
                 character,
                 vertex_buffer,
-            } in self.vertex_buffers.iter()
+            } in self.characters.iter()
             {
                 let bind_group = match self.texture_bind_groups.get(character) {
                     Some(bind_group) => bind_group,
