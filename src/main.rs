@@ -60,8 +60,8 @@ struct BitmapData {
 enum LogicThreadEvent {
     /// The request which is made once the vertex buffers need to be loaded.
     UpdateVertexBuffers {
-        vertices: Vec<[Vertex; 6]>,
-        text: String,
+        vertex_data: Vec<[Vertex; 6]>,
+        text_characters: Vec<char>,
     },
     /// The request which is made once a character bitmap needs to be loaded.
     LoadTextureBindGroup {
@@ -192,6 +192,7 @@ fn estimate_average_line_length(
 }
 
 /// Calculate the positions of the vertices for the given glyph.
+#[inline(always)]
 fn glyph_vertices(x: f32, y: f32, width: f32, height: f32) -> [Vertex; 6] {
     [
         // Upper triangle
@@ -288,7 +289,7 @@ fn main() {
     // which happens in the main loop
     let _logic_events_thread: std::thread::JoinHandle<()> = std::thread::spawn(move || {
         log::info!(
-            "The document '{:?}' will be loaded with the font '{:?}'",
+            "The document {:?} will be loaded with the font {:?}",
             document_path.as_path(),
             font_path.as_path()
         );
@@ -320,10 +321,11 @@ fn main() {
         // Estimate the average line length based on the window width and the margins
         let average_line_length = estimate_average_line_length(&font_face, window_width, margins);
 
-        // Load the characters in the text from the chosen font
+        // Load the characters in the text from the chosen font...
         let mut characters_map: HashMap<char, CharacterGeometry> = HashMap::new();
 
-        for character_to_load in text.nfc().unique() {
+        // ...but skip the space character
+        for character_to_load in text.nfc().unique().filter(|c| *c != ' ') {
             if load_character(
                 &font_face,
                 character_to_load,
@@ -349,7 +351,7 @@ fn main() {
         let mut input_buffer = Vec::new();
 
         // Assign a value to cap the ticks-per-second in the logic events loop
-        let tps_cap: Option<u32> = Some(10);
+        let tps_cap: Option<u32> = Some(30);
         let desired_frame_time = tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
         let mut frame_count = 0;
         let mut is_first_frame = true;
@@ -419,6 +421,7 @@ fn main() {
 
                 // Calculate the positions at which the vertices need to be in order to render the text correctly
                 let mut raw_vertices_data = Vec::new();
+                let mut text_characters = Vec::new();
 
                 // For each line in the wrapped text...
                 for line in wrapped_text.iter() {
@@ -451,6 +454,7 @@ fn main() {
                         let raw_vertex_data = glyph_vertices(x, y, width, height);
 
                         raw_vertices_data.push(raw_vertex_data);
+                        text_characters.push(character);
 
                         // Move the origin by the character advance in order to draw the characters side-to-side.
                         horizontal_origin += (character_data.advance >> 6) as f32;
@@ -463,8 +467,8 @@ fn main() {
 
                 logic_events_sender
                 .send(LogicThreadEvent::UpdateVertexBuffers {
-                    vertices: raw_vertices_data,
-                    text: text.clone(),
+                    vertex_data: raw_vertices_data,
+                    text_characters,
                 })
                 .unwrap_or_else(|_| {
                     log::warn!(
@@ -503,9 +507,10 @@ fn main() {
         while let Ok(logic_events) = logic_events_receiver.try_recv() {
             match logic_events {
                 // It can either be  update the vertex buffers...
-                LogicThreadEvent::UpdateVertexBuffers { vertices, text } => {
-                    render_state.update_characters(vertices, text)
-                }
+                LogicThreadEvent::UpdateVertexBuffers {
+                    vertex_data,
+                    text_characters,
+                } => render_state.update_vertex_buffer(vertex_data, text_characters),
                 // ...or to load the new textures
                 LogicThreadEvent::LoadTextureBindGroup {
                     character_to_load,

@@ -1,10 +1,9 @@
+use crate::BitmapData;
 use anyhow::Ok;
 use nalgebra_glm as glm;
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
-
-use crate::BitmapData;
 
 /// Container for all of the texture-related information such as the size, the data
 /// and the format options needed for rendering it onto the screen.
@@ -139,16 +138,9 @@ pub struct RenderState {
     texture_bind_group_layout: wgpu::BindGroupLayout,
     /// The cache for the textures. It allows a retrieval with the associated character.
     texture_bind_groups: HashMap<char, wgpu::BindGroup>,
-    /// The characters present in the text and the their associated vertex buffers.
-    characters: Vec<Character>,
-}
-
-/// Represents the association of a character to a vertex buffer.
-/// In order to retrieve the character once having accessed the hashmap, it is saved
-/// together with the buffer.
-struct Character {
-    character: char,
     vertex_buffer: wgpu::Buffer,
+    /// The characters which are actually expected to be loaded onto the GPU.
+    text_characters: Vec<char>,
 }
 
 /// The data type which is passed on to the GPU for rendering the vertices with a given projection.
@@ -342,6 +334,12 @@ impl RenderState {
             multiview: None,
         });
 
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Glyphs Vertex Buffer"),
+            contents: bytemuck::cast_slice(&Vec::<[Vertex; 6]>::new()),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         Ok(Self {
             window,
             surface,
@@ -353,7 +351,8 @@ impl RenderState {
             camera_bind_group,
             render_pipeline,
             texture_bind_groups: HashMap::new(),
-            characters: Vec::new(),
+            vertex_buffer,
+            text_characters: Vec::new(),
         })
     }
 
@@ -387,27 +386,20 @@ impl RenderState {
         };
     }
 
-    /// Update the vertex buffers associated with the characters with the new vertices. This operation is quite expensive
-    /// as the buffers are created from scratch, so a different approach might be needed.
-    pub fn update_characters(&mut self, vertices: Vec<[Vertex; 6]>, text: String) {
-        // Remove the previous vertex buffers
-        self.characters.clear();
-
-        for character in text.chars() {
-            let vertex_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&format!("Glyph {:?} Vertex Buffer", character)),
-                    contents: bytemuck::cast_slice(&vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-
-            self.characters.push(Character {
-                character,
-                vertex_buffer,
+    /// Update the vertex buffers associated with the characters with the new vertices.
+    pub fn update_vertex_buffer(
+        &mut self,
+        vertex_data: Vec<[Vertex; 6]>,
+        text_characters: Vec<char>,
+    ) {
+        self.vertex_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Glyphs Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertex_data),
+                usage: wgpu::BufferUsages::VERTEX,
             });
-            log::debug!("Created the vertex buffer for the glyph {:?}", character);
-        }
+        self.text_characters = text_characters;
     }
 
     /// Get a reference to the window.
@@ -454,29 +446,23 @@ impl RenderState {
 
             render_pass.set_pipeline(&self.render_pipeline);
 
-            let mut character_count = 0;
-            for Character {
-                character,
-                vertex_buffer,
-            } in self.characters.iter()
-            {
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+            for (character_index, character) in self.text_characters.iter().enumerate() {
                 let bind_group = match self.texture_bind_groups.get(character) {
                     Some(bind_group) => bind_group,
                     None => {
-                        if *character != ' ' {
-                            log::error!("No texture bind group for character {}", character);
-                            return Err(wgpu::SurfaceError::OutOfMemory);
-                        }
-                        continue;
+                        log::error!("No texture bind group for character {}", character);
+                        return Err(wgpu::SurfaceError::OutOfMemory);
                     }
                 };
                 render_pass.set_bind_group(0, bind_group, &[]);
 
-                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-
-                character_count += 1;
-                render_pass.draw(6 * (character_count - 1)..6 * character_count, 0..1);
+                render_pass.draw(
+                    6 * (character_index as u32)..6 * (character_index as u32 + 1),
+                    0..1,
+                );
             }
             log::debug!("Finished drawing the characters");
         }
