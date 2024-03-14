@@ -128,7 +128,7 @@ impl Vertex {
 /// rendering to a window system the text. It needs to be owned by the main thread.
 pub struct RenderState {
     window: Window,
-    surface: wgpu::Surface,
+    surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     configuration: wgpu::SurfaceConfiguration,
@@ -165,7 +165,9 @@ impl RenderState {
         //
         // The surface needs to live as long as the window that created it.
         // RenderState owns the window so this should be safe.
-        let surface = unsafe { instance.create_surface(&window)? };
+        let surface = unsafe {
+            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::from_window(&window)?)
+        }?;
 
         // Creating some of the wgpu types requires async code
         let adapter = pollster::block_on(async {
@@ -183,10 +185,10 @@ impl RenderState {
             adapter
                 .request_device(
                     &wgpu::DeviceDescriptor {
-                        features: wgpu::Features::empty(), // wgpu::Features::CONSERVATIVE_RASTERIZATION,
+                        required_features: wgpu::Features::empty(), // wgpu::Features::CONSERVATIVE_RASTERIZATION,
                         // WebGL doesn't support all of wgpu's features, so if
                         // we're building for the web we'll have to disable some.
-                        limits: if cfg!(target_arch = "wasm32") {
+                        required_limits: if cfg!(target_arch = "wasm32") {
                             panic!("compilation for wasm32 is not yet implemented");
                         } else {
                             wgpu::Limits::default()
@@ -219,6 +221,7 @@ impl RenderState {
             present_mode: surface_capabilities.present_modes[0],
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
+            desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &configuration);
 
@@ -372,6 +375,7 @@ impl RenderState {
             ],
             label: Some(format!("Glyph {:?} Texture Bind Group", character_to_load).as_str()),
         });
+
         match self
             .texture_bind_groups
             .insert(character_to_load, texture_bind_group)

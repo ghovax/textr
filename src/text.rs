@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use nalgebra_glm::IVec2;
+use serde::{Deserialize, Serialize};
 
 /// All the configuration and properties of a glyph.
 #[derive(Debug, Clone, Default)]
@@ -12,34 +13,12 @@ pub struct CharacterGeometry {
 
 /// Represents margins around a block of text. The order in which they are read is
 /// that the order in which they are present into the struct.
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Margins {
     pub top: f32,
     pub right: f32,
     pub bottom: f32,
     pub left: f32,
-}
-
-impl std::str::FromStr for Margins {
-    type Err = std::num::ParseFloatError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut margins = Margins {
-            top: 0.0,
-            right: 0.0,
-            bottom: 0.0,
-            left: 0.0,
-        };
-        // Split the string by the comma character
-        let mut parts = s.split(',');
-        // Read the margins
-        margins.top = parts.next().unwrap_or("0").parse::<f32>()?;
-        margins.right = parts.next().unwrap_or("0").parse::<f32>()?;
-        margins.bottom = parts.next().unwrap_or("0").parse::<f32>()?;
-        margins.left = parts.next().unwrap_or("0").parse::<f32>()?;
-
-        Ok(margins)
-    }
 }
 
 /// Represents a line of text with various properties for formatting and presentation.

@@ -1,2 +1,15 @@
+# Variables to configure the program
+DOCUMENT = assets/textTest.txt
+FONT = fonts/cmunrm.ttf
+
+ARGS = --document $(DOCUMENT) --font $(FONT)
+
+# Targets for execution
 all:
-	cargo run -- --document assets/textTest.txt --font fonts/cmunrm.ttf --window-size 1800,600 --font-size 50 --margins 60,30,60,30
+	cargo run -- $(ARGS)
+
+flamegraph:
+	cargo flamegraph -- $(ARGS)
+
+clean:
+	cargo clean
