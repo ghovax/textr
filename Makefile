@@ -1,6 +1,6 @@
 # Variables to configure the program
 DOCUMENT = assets/textTest.txt
-FONT = fonts/cmunrm.ttf
+FONT = fonts/unifont-15.1.05.otf
 
 ARGS = --document $(DOCUMENT) --font $(FONT)
 

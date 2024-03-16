@@ -6,3 +6,4 @@
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 /firedbg
+**/.DS_Store
