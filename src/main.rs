@@ -1,9 +1,9 @@
-// These settings make it so that certain linter highlights which show
-// non-idiomatic patterns get disable as they are made on purpose in order to
-// accommodate further patterns yet to be implemented.
+// These settings make it so that certain things that the linter highlights
+// which are typically non-idiomatic patterns get disabled; these kind of
+// patterns are used purposely in order to accommodate further pattern extension
 #![allow(clippy::collapsible_match, clippy::single_match, clippy::collapsible_if)]
 // Forbid at the level of the linter the use of unwraps, which panic the program
-// and forbid graceful termination
+// and forbid graceful termination; in this way we are sure that the errors are properly handled
 #![deny(clippy::unwrap_used)]
 
 use crate::{
@@ -32,10 +32,10 @@ use winit::{
 mod graphics;
 mod text;
 
-// The following structs have only been employed in this file, thus they they do
-// not need to have a separate module associated to them. They represent data
+// The following structs have only been employed in this file, thus they do
+// not need to have a separate module associated, they represent data
 // which is exchanged between different threads or either settings which are
-// employed when generating the window.
+// employed when generating the window
 
 /// The window modes: either fullscreen or windowed.
 #[derive(Clone, Copy)]
@@ -51,7 +51,8 @@ enum RenderThreadEvent {
 }
 
 /// The data which is sent through the texture bind group requests. It contains
-/// the width, rows and buffer data needed to render the bitmap.
+/// the width, number of rows, pitch and buffer data needed to render the
+/// bitmap.
 struct BitmapData {
     width: u32,
     rows: u32,
@@ -61,7 +62,7 @@ struct BitmapData {
 
 /// The events which can be sent from the logic events thread to the main loop.
 enum LogicThreadEvent {
-    /// The request which is made once the vertex buffers need to be loaded.
+    /// The request which is made once the vertex buffer needs to be loaded.
     UpdateVertexBuffers {
         vertex_data: Vec<[Vertex; 6]>,
         text_characters: Vec<char>,
@@ -86,10 +87,13 @@ struct CliArguments {
     /// The path of the font file which is used in rendering the text.
     #[arg(long)]
     font: PathBuf,
+    /// The option for setting fullscreen or windowed
+    #[arg(long)]
+    fullscreen: bool,
 }
 
-/// The most common character is found in the english language. They are used to
-/// calculate the average character advance.
+/// The most common characters found in the English language. They are used in
+/// order to calculate the average character advance.
 const COMMON_CHARACTERS: &str =
     r#" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#;
 
@@ -105,21 +109,21 @@ impl std::fmt::Display for SkippedCharacter {
 
 impl std::error::Error for SkippedCharacter {}
 
-/// Load the character from the font face and request the loading of its
-/// texture.
+/// Load the character from the given font face and request the loading of its
+/// texture into the character texture cache.
 fn load_character(
     font_face: &freetype::Face,
     character_to_load: char,
     characters_map: &mut HashMap<char, CharacterGeometry>,
     logic_events_sender: &crossbeam_channel::Sender<LogicThreadEvent>,
 ) -> Result<(), anyhow::Error> {
-    // Load the selected character
+    // Load the selected character from the font and retrieve the glyph
     font_face.load_char(character_to_load as usize, freetype::face::LoadFlag::RENDER)?;
     let glyph = font_face.glyph();
     glyph.render_glyph(freetype::RenderMode::Mono)?;
     let glyph_bitmap = glyph.bitmap();
 
-    // Associate to each character the geometry
+    // Associate to character to load the geometry of the associated glyph
     let character = CharacterGeometry {
         size: IVec2::new(glyph_bitmap.width(), glyph_bitmap.rows()),
         bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
@@ -131,7 +135,8 @@ fn load_character(
         return Err(anyhow::Error::new(SkippedCharacter(character_to_load)));
     }
 
-    // Send to the render thread the data needed to load the texture of the glyph
+    // Send to the render thread the data needed in order to load the glyph bitmap
+    // into a texture
     logic_events_sender.send(LogicThreadEvent::LoadTextureBindGroup {
         character_to_load,
         bitmap_data: BitmapData {
@@ -145,8 +150,8 @@ fn load_character(
     Ok(())
 }
 
-/// By iterating on a wide range of possible characters we are able to estimate
-/// the average line length in order to render properly on to the window.
+/// Estimate the average line length by taking into consideration both the
+/// window width and the specified margins.
 fn estimate_average_line_length(
     font_face: &freetype::Face,
     window_width: u32,
@@ -154,27 +159,33 @@ fn estimate_average_line_length(
 ) -> Result<u32, anyhow::Error> {
     let mut character_advances = Vec::new();
 
+    // For each common character...
     for character in COMMON_CHARACTERS.chars().nfc() {
-        // Each character is loaded according to its character code which is obtained
-        // from the `nfc` function
+        // ...retrieve the associated glyph from the font...
         font_face.load_char(character as usize, freetype::face::LoadFlag::RENDER)?;
         let glyph = font_face.glyph();
 
-        character_advances.push((glyph.advance().x as u32) >> 6); // Bitshift by
-        // 6 to convert
-        // in pixels
+        // ...then save its horizontal advance in pixels by bitshifting it by 6
+        character_advances.push((glyph.advance().x as u32) >> 6);
     }
+
+    // Compute the average character advance as the arithmetic average of all the
+    // character advances
     let average_character_advance =
         (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32;
 
+    // Estimate the average line length as the total number of characters which fit
+    // in the available horizontal space, if the average character advance is the
+    // one previously calculated
     let average_line_length =
         ((window_width as f32 - margins.left - margins.right) / average_character_advance as f32) as u32;
-    log::debug!("Average line length in characters: {}", average_line_length);
+    log::debug!("Average line length as measured in characters: {}", average_line_length);
 
     Ok(average_line_length)
 }
 
-/// Calculate the positions of the vertices for the given glyph.
+/// Calculate the positions of the vertices for the two triangles making up the
+/// glyph by knowing its geometry.
 #[inline(always)]
 fn calculate_glyph_vertices(x: f32, y: f32, width: f32, height: f32) -> [Vertex; 6] {
     [
@@ -189,33 +200,40 @@ fn calculate_glyph_vertices(x: f32, y: f32, width: f32, height: f32) -> [Vertex;
     ]
 }
 
+/// The configuration setting for the window size which is loaded from the
+/// `config.json` file.
 #[derive(Serialize, Deserialize, Debug)]
 struct WindowSize {
     width: u32,
     height: u32,
 }
 
+/// All the parameters needed for configuring the rendering which are loaded
+/// from the `config.json` file.
 #[derive(Serialize, Deserialize, Debug)]
 struct Configuration {
+    margins: Margins,
     #[serde(rename = "windowSize")]
     window_size: WindowSize,
     #[serde(rename = "fontSize")]
     font_size: u32,
-    margins: Margins,
 }
 
+/// This is the alternative main function which can return an error and
+/// propagate it through the stack in order to handle it gracefully.
 fn fallible_main() -> Result<(), anyhow::Error> {
     // Initialize the logging processes and read the environment variable `RUST_LOG`
     // in order to set the level for filtering the events
     env_logger::init();
 
-    // Parse the command line arguments which were specified
-    let CliArguments { document: document_path, font: font_path } = CliArguments::parse();
+    // Parse the command line arguments which were specified, such as the document
+    // and font paths
+    let CliArguments { document: document_path, font: font_path, fullscreen } = CliArguments::parse();
     log::info!("The document {:?} will be loaded with the font {:?}", document_path.as_path(), font_path.as_path());
 
     // Open the configuration file
     let mut configuration_file = File::open("config.json")?;
-    // Read the file contents into a string
+    // Read the configuration file contents into a string
     let mut contents = String::new();
     configuration_file.read_to_string(&mut contents)?;
 
@@ -224,39 +242,37 @@ fn fallible_main() -> Result<(), anyhow::Error> {
     let WindowSize { width: window_width, height: window_height } = configuration.window_size;
     let font_size = configuration.font_size;
     let margins = configuration.margins;
-
     log::info!("Loading the text with the margins {:?} and font size {}.", margins, font_size);
 
     // Create the event loop which can accept custom events generated by the user
     let event_loop: EventLoop<_> = EventLoopBuilder::<RenderThreadEvent>::with_user_event().build()?;
 
-    // Create the window in the windowed setting and set the custom resolution
-    let window_mode = WindowMode::Windowed(window_width, window_height);
-
     let mut builder = WindowBuilder::new().with_resizable(false).with_title("TeXtr");
 
-    match window_mode {
-        WindowMode::Windowed(width, height) => {
-            // Construct the window at the center of the screen
-            let monitor = match event_loop.primary_monitor() {
-                Some(monitor) => monitor,
-                None => {
-                    return Err(anyhow::Error::msg("The primary monitor is not available"));
-                }
-            };
-            let size = monitor.size();
-            let position = PhysicalPosition::new((size.width - width) as i32 / 2, (size.height - height) as i32 / 2);
-            builder = builder.with_inner_size(PhysicalSize::new(width, height)).with_position(position);
-        }
-        WindowMode::Fullscreen => {
-            // If the setting is fullscreen, then configure it to borderless
-            builder = builder.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-        }
-    };
+    // If the setting is fullscreen, then configure it to borderless
+    if fullscreen {
+        builder = builder.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+    } else {
+        // Otherwise, construct the window at the center of the screen of the primary
+        // monitor with the width and height taken from the configuration file
+        let monitor = match event_loop.primary_monitor() {
+            Some(monitor) => monitor,
+            None => {
+                return Err(anyhow::Error::msg("The primary monitor is not available"));
+            }
+        };
+        let monitor_size = monitor.size();
+        let position = PhysicalPosition::new(
+            (monitor_size.width - window_width) as i32 / 2,
+            (monitor_size.height - window_height) as i32 / 2,
+        );
+        builder = builder.with_inner_size(PhysicalSize::new(window_width, window_height)).with_position(position);
+    }
 
     let window = builder.build(&event_loop)?;
 
-    // Initialize the render state as pre-configured
+    // Initialize the render state as pre-configured in the `RenderState::new`
+    // function
     let mut render_state = pollster::block_on(graphics::RenderState::new(window))?;
 
     // Create the channel for sending the events from the logic thread to the main
@@ -267,70 +283,75 @@ fn fallible_main() -> Result<(), anyhow::Error> {
     let (render_events_sender, render_events_receiver) = crossbeam_channel::unbounded();
 
     // Bootstrap the thread for handling the logic events, which are separate from
-    // the rendering, which happens in the main loop
+    // the rendering which happens in the main loop (known also as the render
+    // thread)
     let _logic_events_thread: std::thread::JoinHandle<()> = std::thread::spawn(move || {
+        // Collect the outcome of the logic events thread in case it returns an error or
+        // exits
         let logic_events_thread_outcome = move || -> Result<(), anyhow::Error> {
-            // Load the library Freetype for using the font glyphs as it is using FFI
-            let library: freetype::Library = freetype::Library::init()?;
-
-            // Load the text from the given document path
-            let mut text = std::fs::read_to_string(document_path.as_path())?;
-            log::debug!("Imported the text: {:?}", text);
+            // Initialize the library Freetype in order to use the font glyphs; it is using
+            // the FFI (foreign function interface) to call the underlying library
+            let library = freetype::Library::init()?;
             // Load the font from the font path
             let font_face = library.new_face(font_path, 0)?;
-
             // Configure the pixel size of the font (in arbitrary units of measurement)
             font_face.set_pixel_sizes(0, font_size)?;
 
-            // Calculate the line length based on the average character advance and the size
-            // of the window, respecting the margins
-            let mut line_height = window_height as f32 - font_size as f32 - margins.top;
+            // Load the text contained in the file at the document path
+            let mut text = std::fs::read_to_string(document_path.as_path())?;
+            log::debug!("Imported the text: {:?}", text);
 
-            // Calculate the advance of the space character separately as it is handled
-            // differently because it doesn't have a texture
-            font_face.load_char(' ' as usize, freetype::face::LoadFlag::RENDER)?;
-            let glyph = font_face.glyph();
-            let space_character_advance = (glyph.advance().x as u32) >> 6;
+            // Set up the starting line height based on the font size, window height and
+            // margins
+            let mut line_height = window_height as f32 - font_size as f32 - margins.top;
 
             // Estimate the average line length based on the window width and the margins
             let average_line_length = estimate_average_line_length(&font_face, window_width, margins)?;
 
-            // Load the characters in the text from the chosen font...
             let mut characters_map: HashMap<char, CharacterGeometry> = HashMap::new();
 
-            // ...but skip the space character
+            // Load the glyphs associated to the characters in the text from the chosen font
             for character_to_load in text.nfc().unique().filter(|character| *character != ' ') {
                 if load_character(&font_face, character_to_load, &mut characters_map, &logic_events_sender).is_err() {
                     log::warn!("Skipped the initial loading of the character {:?}", character_to_load);
                     continue;
                 }
             }
-
             log::debug!("Characters requested to be loaded: {}", characters_map.len());
 
-            // Create the input buffer which is needed for keeping track of the characters
-            // pressed
+            // Calculate the advance of the space character separately as it needs to be
+            // handled differently from the other characters because it doesn't
+            // have a texture associated to it
+            font_face.load_char(' ' as usize, freetype::face::LoadFlag::RENDER)?;
+            let glyph = font_face.glyph();
+            let space_character_advance = (glyph.advance().x as u32) >> 6;
+
+            // Initialize the input buffer, which is used to keep track of the characters
+            // pressed on the keyboard by the user
             let mut input_buffer = Vec::new();
 
             // Assign a value to cap the ticks-per-second in the logic events loop
             let tps_cap: Option<u32> = Some(30);
-            let desired_frame_time = tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
-            let mut frame_count = 0;
-            let mut is_first_frame = true;
+            let desired_iteration_duration = tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
+            let mut iteration_count = 0;
+            let mut is_first_iteration = true;
 
-            // Start the logic events loop
+            // Each iteration of the logic events loop...
             loop {
-                // Register the start time for the current frame
-                let frame_start_time = Instant::now();
-                log::trace!("Logic events loop frame number {frame_count} start time: {:?}", frame_start_time);
+                // ...register the start time for the current iteration as a checkpoint
+                let iteration_start_time = Instant::now();
+                log::trace!(
+                    "Logic events loop iteration number {iteration_count} start time: {:?}",
+                    iteration_start_time
+                );
 
-                // Fetch the custom events sent by the render thread to the logic events thread
+                // ...fetch the custom events sent by the render thread to the logic events
+                // thread, such as the request to save the file or to register a pressed
+                // character...
                 while let Ok(render_events) = render_events_receiver.try_recv() {
                     match render_events {
                         RenderThreadEvent::SaveFile => {
-                            // Save the text to the file path given, but if it fails, the file
-                            // is overwritten and all content is lost. It can fail if the path is
-                            // invalid.
+                            // Save the text to the file path given
                             let mut file = File::create(document_path.as_path())?;
                             file.write_all(text.clone().as_bytes())?;
                             log::info!("The document has been successfully saved to the path: {:?}", document_path);
@@ -341,8 +362,8 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                     }
                 }
 
-                // Insert the text in the input buffer at the caret position and load each newly
-                // present character in the input.
+                // ...insert the characters present in the input buffer at the end of the text,
+                // just like in a typewriter machine
                 for input_character in input_buffer.iter().copied() {
                     text.push(input_character);
 
@@ -367,17 +388,18 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                     }
                 }
 
-                // If the input buffer is not empty or it is the first frame, then we need to
-                // calculate the vertices for the text positioning in the window
-                if !input_buffer.is_empty() || is_first_frame {
+                // ...check if any character is have been inserted by the user and if this
+                // happened, then begin calculating the new text layout
+                if !input_buffer.is_empty() || is_first_iteration {
                     // Each iteration of the loop, wrap the text in lines...
                     let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
                         .iter()
                         .map(|line| line.to_string())
                         .collect();
 
-                    // Calculate the positions at which the vertices need to be in order to render
-                    // the text correctly
+                    // ...and then calculate the positions at which the vertices need to be in order
+                    // to render the text correctly onto the window by
+                    // respecting the margin constraints
                     let mut raw_vertices_data = Vec::new();
                     let mut text_characters = Vec::new();
 
@@ -387,12 +409,12 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 
                         // ...draw each character therein present...
                         for character in line.chars() {
-                            // ...and skip the space character
+                            // ...and skip the space character...
                             if character == ' ' {
                                 horizontal_origin += space_character_advance as f32;
-
                                 continue;
                             }
+                            // ...otherwise, retrieve the character geometry from the map...
                             let character_data = match characters_map.get(&character) {
                                 Some(character) => character,
                                 None => {
@@ -409,51 +431,57 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                             let width = character_data.size.x as f32;
                             let height = character_data.size.y as f32;
 
-                            // The positions of the two triangles making up a single text glyph
+                            // ...calculate the positions of the two triangles making up a single text
+                            // glyph by knowing the geometry of the glyph...
                             let raw_vertex_data = calculate_glyph_vertices(x, y, width, height);
 
                             raw_vertices_data.push(raw_vertex_data);
                             text_characters.push(character);
 
-                            // Move the origin by the character advance in order to draw the
-                            // characters side-to-side.
+                            // ...and in the end, move the horizontal origin of the text by the character
+                            // advance in order to draw the characters side-to-side...
                             horizontal_origin += (character_data.advance >> 6) as f32;
-                            // Bitshift by 6 to get value in pixels (2^6 = 64)
                         }
 
-                        // Move the line height below by the font size when each line is finished
+                        // ...conclude by moving the line height below by the font size
                         line_height -= font_size as f32;
                     }
 
+                    // ... after the calculations are done, send to the render thread the newly
+                    // calculated vertices and the characters present in the
+                    // text, discarding the spaces...
                     logic_events_sender.send(LogicThreadEvent::UpdateVertexBuffers {
                         vertex_data: raw_vertices_data,
                         text_characters,
                     })?;
 
-                    // Clear the input buffer and request a rendering
+                    // ...and in the end, clear the input buffer and request a rendering
                     input_buffer.clear();
                     logic_events_sender.send(LogicThreadEvent::RequestRendering)?;
                 }
 
-                // In the end, reset the line height to its original value
+                // ...before starting the next iteration of the loop, reset the line height to
+                // its original value, as computed in the beginning of the loop
                 line_height = window_height as f32 - margins.top - font_size as f32;
 
-                // Cap the ticks-per-second
-                if let Some(desired_frame_time) = desired_frame_time {
-                    let elapsed_time = frame_start_time.elapsed();
-                    if elapsed_time < desired_frame_time {
-                        std::thread::sleep(desired_frame_time - elapsed_time);
+                // Cap the ticks-per-second in order to not cause a performance hog
+                if let Some(desired_iteration_duration) = desired_iteration_duration {
+                    let elapsed_time = iteration_start_time.elapsed();
+                    if elapsed_time < desired_iteration_duration {
+                        // Do not busy wait, but request the CPU to idle
+                        std::thread::sleep(desired_iteration_duration - elapsed_time);
                     }
                 }
 
-                frame_count += 1;
-                is_first_frame = false;
+                iteration_count += 1;
+                is_first_iteration = false;
             }
 
             #[allow(unreachable_code)]
             Ok(())
         }();
 
+        // Gracefully handle the termination of the loop due to an error
         match logic_events_thread_outcome {
             Ok(_) => (),
             Err(error) => {
@@ -462,13 +490,13 @@ fn fallible_main() -> Result<(), anyhow::Error> {
         }
     });
 
-    // Run the event loop in the main thread
+    // Run the render events loop in the main thread; each iteration of the loop...
     event_loop.run(move |event, target| {
         target.set_control_flow(ControlFlow::Wait);
-        // Each iteration of the loop fetch the logic thread events
+        // ...fetch the logic thread events, which can either be a request...
         while let Ok(logic_events) = logic_events_receiver.try_recv() {
             match logic_events {
-                // It can either be  update the vertex buffers...
+                // ...to update the vertex buffers
                 LogicThreadEvent::UpdateVertexBuffers { vertex_data, text_characters } => {
                     render_state.update_vertex_buffer(vertex_data, text_characters)
                 }
@@ -495,14 +523,14 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                     render_state.load_texture(texture, character_to_load);
                     log::debug!("Loaded the texture bind group for the glyph {:?}", character_to_load);
                 }
+                // ...or to request a redraw of the window frame
                 LogicThreadEvent::RequestRendering => {
-                    // RedrawRequested will only trigger once, unless we manually request it.
                     render_state.window().request_redraw();
                 }
             }
         }
 
-        // Check if any modifiers have been pressed before parsing any other events
+        // ...check if any modifiers have been pressed before parsing any other events
         let mut ctrl_is_pressed = false;
         match event {
             Event::WindowEvent { ref event, window_id } if window_id == render_state.window().id() => match event {
@@ -517,6 +545,8 @@ fn fallible_main() -> Result<(), anyhow::Error> {
             _ => (),
         };
 
+        // ...parse the possible combinations of keys with modifiers which could have
+        // been pressed since the last iteration
         match event {
             Event::WindowEvent { ref event, window_id } if window_id == render_state.window().id() => {
                 match event {
@@ -546,10 +576,11 @@ fn fallible_main() -> Result<(), anyhow::Error> {
             _ => (),
         }
 
+        // ... and then parse all the other possible window events
         match event {
             Event::WindowEvent { ref event, window_id } if window_id == render_state.window().id() => {
                 match event {
-                    // Check if the window has been requested to be closed
+                    // Check if the window has been requested to be closed or the user has pressed escape key
                     WindowEvent::CloseRequested
                     | WindowEvent::KeyboardInput {
                         event:
@@ -558,10 +589,12 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                             },
                         ..
                     } => target.exit(),
+                    // Check if the window has been resized and update the render state accordingly
                     WindowEvent::Resized(physical_size) => {
                         render_state.resize(*physical_size);
                     }
-
+                    // Check if the user has typed a character and if this happened, then send the pressed character to
+                    // the logic events loop for further processing
                     WindowEvent::KeyboardInput {
                         event: KeyEvent { text: Some(text_input), state: ElementState::Pressed, .. },
                         ..
@@ -578,15 +611,18 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                             };
                         }
                     }
-
+                    // RedrawRequested will only trigger once, unless we manually request it.
                     WindowEvent::RedrawRequested => {
+                        // Redraw the current frame by employing the pre-configured
+                        // `RenderState::render` function, this can either succeed or fail...
                         match render_state.render() {
-                            std::result::Result::Ok(_) => {}
-                            // Reconfigure the surface if lost
+                            // ... if it succeeds, then proceed and then return from this function
+                            std::result::Result::Ok(_) => (),
+                            // ... otherwise, reconfigure the surface if it was lost
                             Err(wgpu::SurfaceError::Lost) => render_state.resize(render_state.physical_size),
-                            // The system is out of memory, we should probably quit
+                            // ...or if the system is out of memory, we should probably quit
                             Err(wgpu::SurfaceError::OutOfMemory) => target.exit(),
-                            // All other errors (Outdated, Timeout) should be resolved by the next frame
+                            // ..all other errors (Outdated, Timeout) should typically be resolved by the next frame
                             Err(error) => log::error!("{:?}", error),
                         }
                     }
@@ -601,6 +637,8 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 }
 
 fn main() {
+    // Run the fallible main which contains all the code, and then gracefully
+    // terminate if an error is returned, which is propagated down the stack
     match fallible_main() {
         Ok(_) => {}
         Err(error) => {

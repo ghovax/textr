@@ -1,1 +1,5 @@
-{"windowSize": {"width": 1600, "height": 900}, "fontSize": 40, "margins": {"top": 30, "left": 30, "bottom": 30, "right": 30}}
+{
+    "windowSize": {"width": 1600, "height": 900},
+    "fontSize": 40,
+    "margins": {"top": 30, "left": 30, "bottom": 30, "right": 30}
+}
