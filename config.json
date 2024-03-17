@@ -1,5 +1,16 @@
 {
-    "windowSize": {"width": 1600, "height": 900},
+    "documentPath": "assets/textTest.txt",
+    "fontPath": "fonts/unifont-15.1.05.otf",
     "fontSize": 40,
-    "margins": {"top": 30, "left": 30, "bottom": 30, "right": 30}
+    "margins": {
+        "top": 30,
+        "left": 30,
+        "bottom": 30,
+        "right": 60
+    },
+    "fullscreen": false,
+    "windowSize": {
+        "width": 1600,
+        "height": 900
+    }
 }

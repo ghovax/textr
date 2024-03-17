@@ -21,14 +21,14 @@ pub struct Margins {
     pub left: f32,
 }
 
-/// Represents a line of text with various properties for formatting and
-/// presentation.
+/// Represents a line of text with various properties for formatting and presentation.
 struct LineOfText {
     content: Vec<String>,  // The actual content of the text.
     alignment: Alignment,  // The alignment of the text within the line.
     vertical_spacing: f32, // The vertical space between lines of text.
     margins: Margins,      // Margins around the text block.
-    indentation: f32,      // The indentation of the first line in the paragraph.
+    indentation: f32,      /* The indentation of the first line in the
+                            * paragraph. */
 }
 
 /// Enum representing text alignment options.
@@ -50,6 +50,12 @@ enum TextStyle {
 
 impl LineOfText {
     fn new(content: Vec<String>, vertical_spacing: f32, margins: Margins) -> Self {
-        LineOfText { content, alignment: Alignment::Left, vertical_spacing, margins, indentation: 0.0 }
+        LineOfText {
+            content,
+            alignment: Alignment::Left,
+            vertical_spacing,
+            margins,
+            indentation: 0.0,
+        }
     }
 }

@@ -1,6 +1,4 @@
 # https://rust-lang.github.io/rustfmt/?version=v1.6.0
 struct_lit_single_line = true
 use_small_heuristics = "Max"
-wrap_comments = true
 version = "Two"
-max_width = 120
