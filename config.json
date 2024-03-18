@@ -8,7 +8,7 @@
         "bottom": 30,
         "right": 60
     },
-    "fullscreen": false,
+    "isWindowFullscreen": false,
     "windowSize": {
         "width": 1600,
         "height": 900
