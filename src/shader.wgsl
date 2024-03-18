@@ -27,6 +27,7 @@ fn vertex_main(
 
 @group(0) @binding(0)
 var texture_view: texture_2d<f32>;
+
 @group(0) @binding(1)
 var texture_sampler: sampler;
 

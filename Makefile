@@ -1,5 +1,5 @@
 all:
-	cargo run
+	RUST_LOG=info cargo run
 
 clean:
 	cargo clean

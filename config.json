@@ -3,8 +3,8 @@
     "fontPath": "fonts/unifont-15.1.05.otf",
     "fontSize": 40,
     "margins": {
-        "top": 30,
-        "left": 30,
+        "top": 50,
+        "left": 70,
         "bottom": 30,
         "right": 60
     },
