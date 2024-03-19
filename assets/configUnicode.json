@@ -1,5 +1,5 @@
 {
-    "documentPath": "assets/textTest.txt",
+    "documentPath": "assets/unicodeCharacters.txt",
     "fontPath": "fonts/unifont-15.1.05.otf",
     "fontSize": 40,
     "margins": {

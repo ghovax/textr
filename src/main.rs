@@ -11,6 +11,7 @@ use crate::{
     graphics::{Texture, Vertex},
     text::{CharacterGeometry, Margins},
 };
+use clap::Parser;
 use itertools::Itertools;
 use nalgebra_glm::IVec2;
 use serde::{Deserialize, Serialize};
@@ -74,20 +75,15 @@ enum LogicThreadEvent {
     RequestRendering,
 }
 
-/// The most common characters found in the English language. They are used in
-/// order to calculate the average character advance.
-const COMMON_CHARACTERS: &str =
-    r#" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'`~<,.>/?"\|;:]}[{=+"#;
-
 /// The event which is triggered when a character is not found in the font.
 #[derive(Debug)]
 struct SkippedCharacter(char);
 
 impl std::fmt::Display for SkippedCharacter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
-            f,
-            "Skipping the loading of the character {:?} because it has zero width or height",
+            formatter,
+            "Skipping the dynamic loading of the character {:?} because its glyph has either zero width or height",
             self.0
         )
     }
@@ -114,12 +110,12 @@ fn load_character(
     }
 
     // Associate to character to load the geometry of the associated glyph
-    let character = CharacterGeometry {
+    let character_geometry = CharacterGeometry {
         size: IVec2::new(glyph_bitmap.width(), glyph_bitmap.rows()),
         bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
         advance: glyph.advance().x as u32,
     };
-    characters_map.insert(character_to_load, character);
+    characters_map.insert(character_to_load, character_geometry);
 
     // Send to the render thread the data needed in order to load the glyph bitmap into a texture
     logic_events_sender.send(LogicThreadEvent::LoadTextureBindGroup {
@@ -135,23 +131,37 @@ fn load_character(
     Ok(())
 }
 
-/// Estimate the average line length by taking into consideration both the
+/// Estimate the average line length in the text by taking into consideration both the
 /// window width and the specified margins.
 fn estimate_average_line_length(
+    text: String,
     font_face: &freetype::Face,
     window_width: u32,
     margins: Margins,
 ) -> Result<u32, anyhow::Error> {
     let mut character_advances = Vec::new();
 
-    // For each common character...
-    for character in COMMON_CHARACTERS.chars().nfc() {
+    let mut skipped_characters = Vec::new();
+    // For each unique character that is present in the text...
+    for character in text.chars().nfc() {
         // ...retrieve the associated glyph from the font...
         font_face.load_char(character as usize, freetype::face::LoadFlag::RENDER)?;
         let glyph = font_face.glyph();
 
         // ...then save its horizontal advance in pixels by bitshifting it by 6
-        character_advances.push((glyph.advance().x as u32) >> 6);
+        let glyph_advance = glyph.advance().x as u32;
+        if glyph_advance == 0 {
+            skipped_characters.push(character);
+            continue;
+        }
+        character_advances.push(glyph_advance >> 6);
+    }
+
+    if !skipped_characters.is_empty() {
+        log::warn!(
+            "Skipping the characters {:?} in the estimation of the average line length because the associated glyphs have zero advance",
+            skipped_characters
+        );
     }
 
     // Compute the average character advance as the arithmetic average of all the character advances
@@ -216,6 +226,15 @@ struct Configuration {
     window_size: WindowSize,
 }
 
+#[derive(Parser)]
+#[command(version, about)]
+/// The CLI arguments which are automatically parsed by the `clap` library.
+struct CliArguments {
+    /// The path of the configuration file in JSON format.
+    #[arg(short = 'c', long = "config")]
+    configuration_file_path: PathBuf,
+}
+
 /// This is the alternative main function which can return an error and
 /// propagate it through the stack in order to handle it gracefully.
 fn fallible_main() -> Result<(), anyhow::Error> {
@@ -223,17 +242,16 @@ fn fallible_main() -> Result<(), anyhow::Error> {
     // `RUST_LOG` in order to set the level for filtering the events
     env_logger::init();
 
+    // Parse the command line arguments and retrieve the config file path
+    let CliArguments { configuration_file_path } = CliArguments::parse();
+
     // Open the configuration file
-    let mut configuration_file = File::open("config.json")?;
+    let mut configuration_file = File::open(configuration_file_path.clone())?;
     // Read the configuration file contents into a string
     let mut contents = String::new();
     configuration_file.read_to_string(&mut contents)?;
 
     // Parse the JSON in order to extract the configuration parameters
-    let configuration: Configuration = serde_json::from_str(&contents)?;
-    log::info!("Configuration file `config.json` loaded successfully");
-
-    // Extract the path of the document which is loaded in the editor
     let Configuration {
         document_path,
         font_path,
@@ -241,7 +259,12 @@ fn fallible_main() -> Result<(), anyhow::Error> {
         margins,
         is_window_fullscreen,
         window_size,
-    } = configuration;
+    } = serde_json::from_str(&contents)?;
+    log::info!(
+        "The configuration file `{}` has been found and loaded successfully",
+        configuration_file_path.display()
+    );
+
     // Extract the window width and height
     let WindowSize { width: window_width, height: window_height } = window_size;
     log::info!(
@@ -258,7 +281,13 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 
     let mut builder = WindowBuilder::new()
         .with_resizable(false)
-        .with_title(format!("TeXtr - {:?}", document_path.as_path()));
+        .with_title(format!("TeXtr - {}", match document_path.as_path().file_name() {
+            Some(file_name) => match file_name.to_str() {
+                Some(file_name) => file_name,
+                None => return Err(anyhow::Error::msg("The file name is not valid, can't convert it internally to an usable format")),
+            },
+            None => return Err(anyhow::Error::msg("The file at the given document path doesn't have a filename which can be extracted")),
+        }));
 
     // If the setting is fullscreen, then configure it to borderless...
     if is_window_fullscreen {
@@ -314,12 +343,13 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 
             // Estimate the average line length based on the window width and the margins
             let average_line_length =
-                estimate_average_line_length(&font_face, window_width, margins)?;
+                estimate_average_line_length(text.clone(), &font_face, window_width, margins)?;
 
             let mut characters_map: HashMap<char, CharacterGeometry> = HashMap::new();
 
             // Load the glyphs associated to the characters in the text from the chosen font
-            for character_to_load in text.nfc().unique().filter(|character| *character != ' ') {
+            let mut skipped_characters = Vec::new();
+            for character_to_load in text.nfc().unique() {
                 match load_character(
                     &font_face,
                     character_to_load,
@@ -328,14 +358,32 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                 ) {
                     Ok(()) => (),
                     Err(error) => {
-                        log::warn!("{:?}", error);
+                        // Downcast the error in order to match it with the underlying error type
+                        match error.downcast_ref::<SkippedCharacter>() {
+                            Some(skipped_character) => {
+                                // If the character is skipped, then add it to the list of skipped characters
+                                skipped_characters.push(skipped_character.0);
+                            }
+                            None => {
+                                // If the error is not a skipped character, then propagate it through the stack
+                                return Err(error);
+                            }
+                        }
                     }
                 }
             }
+
+            if !skipped_characters.is_empty() {
+                log::warn!(
+                    "Skipping the characters {:?} in the initial loading of the text because the associated glyphs have either zero width or height",
+                    skipped_characters
+                );
+            }
+
             log::debug!("Characters requested to be loaded: {}", characters_map.len());
 
-            // Calculate the advance of the space character separately as it needs to be handled differently
-            // from the other characters because it doesn't have a texture associated to it
+            // Calculate the advance of the space character separately as it is used
+            // to know in advance how much space to skip when a character is problematic
             font_face.load_char(' ' as usize, freetype::face::LoadFlag::RENDER)?;
             let glyph = font_face.glyph();
             let space_character_advance = (glyph.advance().x as u32) >> 6;
@@ -345,9 +393,9 @@ fn fallible_main() -> Result<(), anyhow::Error> {
             let mut input_buffer = Vec::new();
 
             // Assign a value to cap the ticks-per-second in the logic events loop
-            let tps_cap: Option<u32> = Some(30);
-            let desired_iteration_duration =
-                tps_cap.map(|tps| Duration::from_secs_f64(1.0 / tps as f64));
+            let ticks_per_second_cap: Option<u32> = Some(30);
+            let desired_iteration_duration = ticks_per_second_cap
+                .map(|ticks_per_second| Duration::from_secs_f64(1.0 / ticks_per_second as f64));
             let mut iteration_count = 0;
             let mut is_first_iteration = true;
 
@@ -395,7 +443,9 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                     };
                     // ...and then see if the character is already present in the map, if it isn't
                     // then attempt to load it from the specified font
-                    if !characters_map.contains_key(&character_to_load) {
+                    if !characters_map.contains_key(&character_to_load)
+                        && !skipped_characters.contains(&input_character)
+                    {
                         match load_character(
                             &font_face,
                             character_to_load,
@@ -404,6 +454,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                         ) {
                             Ok(()) => (),
                             Err(error) => {
+                                skipped_characters.push(input_character);
                                 log::warn!("{:?}", error);
                             }
                         }
@@ -437,7 +488,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                                     // ...and if it's not present, then skip the character
                                     // and display it as a space character; this can only happen with
                                     // very rare glyphs that aren't commonly used in text
-                                    // (such as in https://www.compart.com/en/unicode/U+2005)
+                                    // (such as htticks_per_second://www.compart.com/en/unicode/U+2005)
                                     horizontal_origin += space_character_advance as f32;
                                     continue;
                                 }
@@ -495,6 +546,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                 is_first_iteration = false;
             }
 
+            // This is only left because the compiler requires a return type, but it will never be reached
             #[allow(unreachable_code)]
             Ok(())
         };
