@@ -7,10 +7,7 @@
 // and forbid graceful termination; in this way we are sure that the errors are properly handled
 #![deny(clippy::unwrap_used)]
 
-use crate::{
-    graphics::{Texture, Vertex},
-    text::{CharacterGeometry, Margins},
-};
+use crate::graphics::{Texture, Vertex};
 use clap::Parser;
 use itertools::Itertools;
 use nalgebra_glm::IVec2;
@@ -31,12 +28,19 @@ use winit::{
     window::WindowBuilder,
 };
 mod graphics;
-mod text;
 
 // The following structs have only been employed in this file, thus they do
 // not need to have a separate module associated, they represent data
 // which is exchanged between different threads or either settings which are
 // employed when generating the window
+
+/// All the configuration and properties of a glyph.
+#[derive(Debug, Clone, Default)]
+pub struct CharacterGeometry {
+    pub size: IVec2,    // Size of glyph
+    pub bearing: IVec2, // Offset from baseline to left/top of glyph
+    pub advance: u32,   // Offset to advance to the next glyph
+}
 
 /// The window modes: either fullscreen or windowed.
 #[derive(Clone, Copy)]
@@ -131,53 +135,6 @@ fn load_character(
     Ok(())
 }
 
-/// Estimate the average line length in the text by taking into consideration both the
-/// window width and the specified margins.
-fn estimate_average_line_length(
-    text: String,
-    font_face: &freetype::Face,
-    window_width: u32,
-    margins: Margins,
-) -> Result<u32, anyhow::Error> {
-    let mut character_advances = Vec::new();
-
-    let mut skipped_characters = Vec::new();
-    // For each unique character that is present in the text...
-    for character in text.chars().nfc() {
-        // ...retrieve the associated glyph from the font...
-        font_face.load_char(character as usize, freetype::face::LoadFlag::RENDER)?;
-        let glyph = font_face.glyph();
-
-        // ...then save its horizontal advance in pixels by bitshifting it by 6
-        let glyph_advance = glyph.advance().x as u32;
-        if glyph_advance == 0 {
-            skipped_characters.push(character);
-            continue;
-        }
-        character_advances.push(glyph_advance >> 6);
-    }
-
-    if !skipped_characters.is_empty() {
-        log::warn!(
-            "Skipping the characters {:?} in the estimation of the average line length because the associated glyphs have zero advance",
-            skipped_characters
-        );
-    }
-
-    // Compute the average character advance as the arithmetic average of all the character advances
-    let average_character_advance =
-        (character_advances.iter().sum::<u32>() as f32 / character_advances.len() as f32) as u32;
-
-    // Estimate the average line length as the total number of characters which
-    // fit in the available horizontal space, if the average character
-    // advance is the one previously calculated
-    let average_line_length = ((window_width as f32 - margins.left - margins.right)
-        / average_character_advance as f32) as u32;
-    log::debug!("Average line length as measured in characters: {}", average_line_length);
-
-    Ok(average_line_length)
-}
-
 /// Calculate the positions of the vertices for the two triangles making up the
 /// glyph by knowing its geometry.
 #[inline(always)]
@@ -206,18 +163,45 @@ struct WindowSize {
 /// the interface in case the field names have been changed during development.
 #[derive(Serialize, Deserialize, Debug)]
 struct Configuration {
+    #[serde(rename = "assets")]
+    assets: Assets,
+    #[serde(rename = "visualOptions")]
+    visual_options: VisualOptions,
+    #[serde(rename = "windowSettings")]
+    window_settings: WindowSettings,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Assets {
     /// The path of the document which is loaded in the editor.
     #[serde(rename = "documentPath")]
     document_path: PathBuf,
     /// The path of the font file which is used in rendering the text.
     #[serde(rename = "fontPath")]
     font_path: PathBuf,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct VisualOptions {
     /// The size of the font in arbitrary units.
     #[serde(rename = "fontSize")]
     font_size: u32,
-    /// The margins which the text is subjected to.
-    #[serde(rename = "margins")]
-    margins: Margins,
+    /// The top margin which the text is subjected to.
+    #[serde(rename = "topMargin")]
+    top_margin: f32,
+    /// The left margin which the text is subjected to.
+    #[serde(rename = "leftMargin")]
+    left_margin: f32,
+    /// The maximum amount of characters rendered in a line of text.
+    #[serde(rename = "charactersPerLine")]
+    characters_per_line: u32,
+    /// The line height used to render the text.
+    #[serde(rename = "lineHeight")]
+    line_height: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct WindowSettings {
     /// The option for setting fullscreen or windowed
     #[serde(rename = "isWindowFullscreen")]
     is_window_fullscreen: bool,
@@ -227,11 +211,16 @@ struct Configuration {
 }
 
 #[derive(Parser)]
-#[command(version, about)]
+#[command(version, about = "Render text onto the screen with a given font. Use the command `-h` for help.", long_about = None)]
 /// The CLI arguments which are automatically parsed by the `clap` library.
 struct CliArguments {
     /// The path of the configuration file in JSON format.
-    #[arg(short = 'c', long = "config")]
+    #[arg(
+        short = 'c',
+        long = "config",
+        id = "config.json",
+        help = "Specify the configuration file written in the JSON format"
+    )]
     configuration_file_path: PathBuf,
 }
 
@@ -253,12 +242,10 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 
     // Parse the JSON in order to extract the configuration parameters
     let Configuration {
-        document_path,
-        font_path,
-        font_size,
-        margins,
-        is_window_fullscreen,
-        window_size,
+        assets: Assets { document_path, font_path },
+        visual_options:
+            VisualOptions { font_size, top_margin, left_margin, characters_per_line, line_height },
+        window_settings: WindowSettings { is_window_fullscreen, window_size },
     } = serde_json::from_str(&contents)?;
     log::info!(
         "The configuration file `{}` has been found and loaded successfully",
@@ -268,11 +255,14 @@ fn fallible_main() -> Result<(), anyhow::Error> {
     // Extract the window width and height
     let WindowSize { width: window_width, height: window_height } = window_size;
     log::info!(
-        "The document {:?} will be loaded with the font {:?}, font size {} and {:?}",
+        "The document {:?} will be loaded with the font {:?}, font size {}, top margin {}, left margin {}, line height {} and {} characters per line",
         document_path.as_path(),
         font_path.as_path(),
         font_size,
-        margins
+        top_margin,
+        left_margin,
+        line_height,
+        characters_per_line,
     );
 
     // Create the event loop which can accept custom events generated by the user
@@ -339,11 +329,8 @@ fn fallible_main() -> Result<(), anyhow::Error> {
             log::debug!("Imported the text: {:?}", text);
 
             // Set up the starting line height based on the font size, window height and top-most margin
-            let mut line_height = window_height as f32 - font_size as f32 - margins.top;
-
-            // Estimate the average line length based on the window width and the margins
-            let average_line_length =
-                estimate_average_line_length(text.clone(), &font_face, window_width, margins)?;
+            let mut vertical_position =
+                window_height as f32 - font_size as f32 - top_margin - line_height;
 
             let mut characters_map: HashMap<char, CharacterGeometry> = HashMap::new();
 
@@ -393,9 +380,10 @@ fn fallible_main() -> Result<(), anyhow::Error> {
             let mut input_buffer = Vec::new();
 
             // Assign a value to cap the ticks-per-second in the logic events loop
-            let ticks_per_second_cap: Option<u32> = Some(30);
+            let ticks_per_second_cap: Option<u32> = Some(60);
             let desired_iteration_duration = ticks_per_second_cap
                 .map(|ticks_per_second| Duration::from_secs_f64(1.0 / ticks_per_second as f64));
+            
             let mut iteration_count = 0;
             let mut is_first_iteration = true;
 
@@ -465,7 +453,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                 // happened, then begin calculating the new text layout
                 if !input_buffer.is_empty() || is_first_iteration {
                     // Each iteration of the loop, wrap the text in lines...
-                    let wrapped_text: Vec<_> = textwrap::wrap(&text, average_line_length as usize)
+                    let wrapped_text: Vec<_> = textwrap::wrap(&text, characters_per_line as usize)
                         .iter()
                         .map(|line| line.to_string())
                         .collect();
@@ -477,7 +465,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 
                     // For each line in the wrapped text...
                     for line in wrapped_text.iter() {
-                        let mut horizontal_origin = margins.left;
+                        let mut horizontal_origin = left_margin;
 
                         // ...draw each character therein present...
                         for character in line.chars() {
@@ -495,7 +483,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                             };
 
                             let x = horizontal_origin + character_data.bearing.x as f32;
-                            let y = line_height
+                            let y = vertical_position
                                 - (character_data.size.y - character_data.bearing.y) as f32;
 
                             let width = character_data.size.x as f32;
@@ -514,7 +502,7 @@ fn fallible_main() -> Result<(), anyhow::Error> {
                         }
 
                         // ...conclude by moving the line height below by the font size
-                        line_height -= font_size as f32;
+                        vertical_position -= font_size as f32 + line_height;
                     }
 
                     // ... after the calculations are done, send to the render thread the newly
@@ -531,7 +519,8 @@ fn fallible_main() -> Result<(), anyhow::Error> {
 
                 // ...before starting the next iteration of the loop, reset the line height to
                 // its original value, as computed in the beginning of the loop
-                line_height = window_height as f32 - margins.top - font_size as f32;
+                vertical_position =
+                    window_height as f32 - font_size as f32 - top_margin - line_height;
 
                 // Cap the ticks-per-second in order to not cause a performance hog
                 if let Some(desired_iteration_duration) = desired_iteration_duration {

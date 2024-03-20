@@ -1,16 +1,20 @@
 {
-    "documentPath": "assets/empty.txt",
-    "fontPath": "fonts/NewCMMath-Regular.otf",
-    "fontSize": 40,
-    "margins": {
-        "top": 50,
-        "left": 70,
-        "bottom": 30,
-        "right": 60
+    "assets": {
+        "documentPath": "assets/empty.txt",
+        "fontPath": "fonts/NewCMMath-Regular.otf"
     },
-    "isWindowFullscreen": false,
-    "windowSize": {
-        "width": 1600,
-        "height": 900
+    "visualOptions": {
+        "fontSize": 40,
+        "topMargin": 50,
+        "leftMargin": 70,
+        "charactersPerLine": 20,
+        "lineHeight": 1
+    },
+    "windowSettings": {
+        "isWindowFullscreen": false,
+        "windowSize": {
+            "width": 800,
+            "height": 400
+        }
     }
 }
