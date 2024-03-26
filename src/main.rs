@@ -1,734 +1,301 @@
-// These settings make it so that certain things that the linter highlights
-// which are typically non-idiomatic patterns get disabled; these kind of
-// patterns are used purposely in order to accommodate further pattern extension
-#![allow(clippy::collapsible_match, clippy::single_match, clippy::collapsible_if)]
-//
-// Forbid at the level of the linter the use of unwraps, which panic the program
-// and forbid graceful termination; in this way we are sure that the errors are properly handled
-#![deny(clippy::unwrap_used)]
-
-use crate::graphics::{Texture, Vertex};
-use clap::Parser;
-use itertools::Itertools;
-use nalgebra_glm::IVec2;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::Write as _,
-    time::{Duration, Instant},
+use glium::{
+    glutin::{
+        self, dpi::PhysicalSize, event_loop::EventLoop, window::WindowBuilder, ContextBuilder,
+    },
+    implement_vertex, program, uniform, Surface as _,
 };
-use std::{io::Read as _, path::PathBuf};
-use unicode_normalization::UnicodeNormalization;
-use winit::{
-    dpi::{PhysicalPosition, PhysicalSize},
-    event::{ElementState, Event, KeyEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopBuilder},
-    keyboard::{KeyCode, ModifiersState, PhysicalKey},
-    window::WindowBuilder,
+use glutin::{
+    event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::ControlFlow,
 };
-mod graphics;
+use rusttype::gpu_cache::Cache;
+use rusttype::{point, vector, Font, PositionedGlyph, Rect, Scale};
+use std::borrow::Cow;
+use std::env;
+use std::error::Error;
 
-// The following structs have only been employed in this file, thus they do
-// not need to have a separate module associated, they represent data
-// which is exchanged between different threads or either settings which are
-// employed when generating the window
-
-/// All the configuration and properties of a glyph.
-#[derive(Debug, Clone, Default)]
-pub struct CharacterGeometry {
-    pub size: IVec2,    // Size of glyph
-    pub bearing: IVec2, // Offset from baseline to left/top of glyph
-    pub advance: u32,   // Offset to advance to the next glyph
-}
-
-/// The window modes: either fullscreen or windowed.
-#[derive(Clone, Copy)]
-pub enum WindowMode {
-    Windowed(u32, u32),
-    Fullscreen,
-}
-
-/// The events which can be sent from the main loop to the logic events thread.
-enum RenderThreadEvent {
-    SaveFile,
-    RegisterCharacter(char),
-}
-
-/// The data which is sent through the texture bind group requests. It contains
-/// the width, number of rows, pitch and buffer data needed to render the bitmap.
-struct BitmapData {
+fn layout_paragraph<'a>(
+    font: &Font<'a>,
+    scale: Scale,
     width: u32,
-    rows: u32,
-    buffer: Vec<u8>,
-    pitch: u32,
-}
-
-/// The events which can be sent from the logic events thread to the main loop.
-enum LogicThreadEvent {
-    /// The request which is made once the vertex buffer needs to be loaded.
-    UpdateVertexBuffers {
-        vertex_data: Vec<[Vertex; 6]>,
-        text_characters: Vec<char>,
-    },
-    /// The request which is made once a character bitmap needs to be loaded.
-    LoadTextureBindGroup {
-        character_to_load: char,
-        bitmap_data: BitmapData,
-    },
-    RequestRendering,
-}
-
-/// The event which is triggered when a character is not found in the font.
-#[derive(Debug)]
-struct SkippedCharacter(char);
-
-impl std::fmt::Display for SkippedCharacter {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "Skipping the dynamic loading of the character {:?} because its glyph has either zero width or height",
-            self.0
-        )
+    text: &str,
+) -> Vec<PositionedGlyph<'a>> {
+    let mut positioned_glyphs = Vec::new();
+    let vertical_metrics = font.v_metrics(scale);
+    let advance_height =
+        vertical_metrics.ascent - vertical_metrics.descent + vertical_metrics.line_gap;
+    let mut caret = point(0.0, vertical_metrics.ascent);
+    let mut last_glyph_id = None;
+    for character in text.chars() {
+        if character.is_control() {
+            match character {
+                '\r' => {
+                    caret = point(0.0, caret.y + advance_height);
+                }
+                '\n' => {}
+                _ => {}
+            }
+            continue;
+        }
+        let base_glyph = font.glyph(character);
+        if let Some(id) = last_glyph_id.take() {
+            caret.x += font.pair_kerning(scale, id, base_glyph.id());
+        }
+        last_glyph_id = Some(base_glyph.id());
+        let mut glyph = base_glyph.scaled(scale).positioned(caret);
+        if let Some(bounding_box) = glyph.pixel_bounding_box() {
+            if bounding_box.max.x > width as i32 {
+                caret = point(0.0, caret.y + advance_height);
+                glyph.set_position(caret);
+                last_glyph_id = None;
+            }
+        }
+        caret.x += glyph.unpositioned().h_metrics().advance_width;
+        positioned_glyphs.push(glyph);
     }
+    positioned_glyphs
 }
 
-impl std::error::Error for SkippedCharacter {}
+#[derive(Copy, Clone)]
+struct Vertex {
+    position: [f32; 2],
+    texture_coordinates: [f32; 2],
+    color: [f32; 4],
+}
 
-/// Load the character from the given font face and request the loading of its
-/// texture into the character texture cache.
-fn load_character(
-    font_face: &freetype::Face,
-    character_to_load: char,
-    characters_map: &mut HashMap<char, CharacterGeometry>,
-    logic_events_sender: &crossbeam_channel::Sender<LogicThreadEvent>,
-) -> Result<(), anyhow::Error> {
-    // Load the selected character from the font and retrieve the glyph
-    font_face.load_char(character_to_load as usize, freetype::face::LoadFlag::RENDER)?;
-    let glyph = font_face.glyph();
-    glyph.render_glyph(freetype::RenderMode::Mono)?;
-    let glyph_bitmap = glyph.bitmap();
+implement_vertex!(Vertex, position, texture_coordinates, color);
 
-    if glyph_bitmap.width() == 0 || glyph_bitmap.rows() == 0 {
-        return Err(anyhow::Error::new(SkippedCharacter(character_to_load)));
+fn main() {
+    if cfg!(target_os = "linux") && env::var("WINIT_UNIX_BACKEND").is_err() {
+        env::set_var("WINIT_UNIX_BACKEND", "x11");
     }
 
-    // Associate to character to load the geometry of the associated glyph
-    let character_geometry = CharacterGeometry {
-        size: IVec2::new(glyph_bitmap.width(), glyph_bitmap.rows()),
-        bearing: IVec2::new(glyph.bitmap_left(), glyph.bitmap_top()),
-        advance: glyph.advance().x as u32,
-    };
-    characters_map.insert(character_to_load, character_geometry);
+    let font_data = std::fs::read("fonts/WenQuanYiMicroHei.ttf").unwrap();
+    let font = Font::try_from_vec(font_data).unwrap();
 
-    // Send to the render thread the data needed in order to load the glyph bitmap into a texture
-    logic_events_sender.send(LogicThreadEvent::LoadTextureBindGroup {
-        character_to_load,
-        bitmap_data: BitmapData {
-            width: glyph_bitmap.width() as u32,
-            rows: glyph_bitmap.rows() as u32,
-            buffer: glyph_bitmap.buffer().to_vec(),
-            pitch: glyph_bitmap.pitch() as u32,
+    let window = WindowBuilder::new()
+        .with_inner_size(PhysicalSize::new(512, 512))
+        .with_title("RustType GPU cache example");
+    let context = ContextBuilder::new().with_vsync(true);
+    let event_loop = EventLoop::new();
+    let display = glium::Display::new(window, context, &event_loop).unwrap();
+
+    let scale = display.gl_window().window().scale_factor();
+
+    let (cache_width, cache_height) = ((512.0 * scale) as u32, (512.0 * scale) as u32);
+    let mut cache: Cache<'static> = Cache::builder()
+        .dimensions(cache_width, cache_height)
+        .build();
+
+    let program = program!(
+    &display,
+    140 => {
+            vertex: r#"
+#version 140
+
+in vec2 position;
+in vec2 texture_coordinates;
+in vec4 color;
+
+out vec2 vertex_texture_coordinates;
+out vec4 vertex_color;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    vertex_texture_coordinates = texture_coordinates;
+    vertex_color = color;
+}
+            "#,
+
+            fragment: r#"
+#version 140
+
+uniform sampler2D texture_sampler;
+
+in vec2 vertex_texture_coordinates;
+in vec4 vertex_color;
+
+out vec4 fragment_color;
+
+void main() {
+    fragment_color = vertex_color * vec4(1.0, 1.0, 1.0, texture(texture_sampler, vertex_texture_coordinates).r);
+}
+            "#
+    }).unwrap();
+
+    let cache_texture = glium::texture::Texture2d::with_format(
+        &display,
+        glium::texture::RawImage2d {
+            data: Cow::Owned(vec![128u8; cache_width as usize * cache_height as usize]),
+            width: cache_width,
+            height: cache_height,
+            format: glium::texture::ClientFormat::U8,
         },
-    })?;
+        glium::texture::UncompressedFloatFormat::U8,
+        glium::texture::MipmapsOption::NoMipmap,
+    )
+    .unwrap();
+    let mut text: String = "A japanese poem:\r
+\r
+色は匂へど散りぬるを我が世誰ぞ常ならむ有為の奥山今日越えて浅き夢見じ酔ひもせず\r
+\r
+Feel free to type out some text, and delete it with Backspace. \
+You can also try resizing this window."
+        .into();
 
-    Ok(())
-}
+    event_loop.run(move |event, _, control_flow| {
+        control_flow.set_wait();
 
-/// Calculate the positions of the vertices for the two triangles making up the
-/// glyph by knowing its geometry.
-#[inline(always)]
-fn calculate_glyph_vertices(x: f32, y: f32, width: f32, height: f32) -> [Vertex; 6] {
-    [
-        // Upper triangle
-        Vertex { position: [x, y + height], texture_coordinates: [0.0, 0.0] },
-        Vertex { position: [x, y], texture_coordinates: [0.0, 1.0] },
-        Vertex { position: [x + width, y], texture_coordinates: [1.0, 1.0] },
-        // Lower triangle
-        Vertex { position: [x, y + height], texture_coordinates: [0.0, 0.0] },
-        Vertex { position: [x + width, y], texture_coordinates: [1.0, 1.0] },
-        Vertex { position: [x + width, y + height], texture_coordinates: [1.0, 0.0] },
-    ]
-}
-
-/// The configuration setting for the window size which is loaded from the `config.json` file.
-#[derive(Serialize, Deserialize, Debug)]
-struct WindowSize {
-    width: u32,
-    height: u32,
-}
-
-/// All the parameters needed for configuring the rendering which are loaded
-/// from the `config.json` file. The fields are renamed in order to stabilize
-/// the interface in case the field names have been changed during development.
-#[derive(Serialize, Deserialize, Debug)]
-struct Configuration {
-    #[serde(rename = "assets")]
-    assets: Assets,
-    #[serde(rename = "visualOptions")]
-    visual_options: VisualOptions,
-    #[serde(rename = "windowSettings")]
-    window_settings: WindowSettings,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Assets {
-    /// The path of the document which is loaded in the editor.
-    #[serde(rename = "documentPath")]
-    document_path: PathBuf,
-    /// The path of the font file which is used in rendering the text.
-    #[serde(rename = "fontPath")]
-    font_path: PathBuf,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct VisualOptions {
-    /// The size of the font in arbitrary units.
-    #[serde(rename = "fontSize")]
-    font_size: u32,
-    /// The top margin which the text is subjected to.
-    #[serde(rename = "topMargin")]
-    top_margin: f32,
-    /// The left margin which the text is subjected to.
-    #[serde(rename = "leftMargin")]
-    left_margin: f32,
-    /// The maximum amount of characters rendered in a line of text.
-    #[serde(rename = "charactersPerLine")]
-    characters_per_line: u32,
-    /// The line height used to render the text.
-    #[serde(rename = "lineHeight")]
-    line_height: f32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct WindowSettings {
-    /// The option for setting fullscreen or windowed
-    #[serde(rename = "isWindowFullscreen")]
-    is_window_fullscreen: bool,
-    /// The window size.
-    #[serde(rename = "windowSize")]
-    window_size: WindowSize,
-}
-
-#[derive(Parser)]
-#[command(version, about = "Render text onto the screen with a given font. Use the command `-h` for help.", long_about = None)]
-/// The CLI arguments which are automatically parsed by the `clap` library.
-struct CliArguments {
-    /// The path of the configuration file in JSON format.
-    #[arg(
-        short = 'c',
-        long = "config",
-        id = "config.json",
-        help = "Specify the configuration file written in the JSON format"
-    )]
-    configuration_file_path: PathBuf,
-}
-
-/// This is the alternative main function which can return an error and
-/// propagate it through the stack in order to handle it gracefully.
-fn fallible_main() -> Result<(), anyhow::Error> {
-    // Initialize the logging processes and read the environment variable
-    // `RUST_LOG` in order to set the level for filtering the events
-    env_logger::init();
-
-    // Parse the command line arguments and retrieve the config file path
-    let CliArguments { configuration_file_path } = CliArguments::parse();
-
-    // Open the configuration file
-    let mut configuration_file = File::open(configuration_file_path.clone())?;
-    // Read the configuration file contents into a string
-    let mut contents = String::new();
-    configuration_file.read_to_string(&mut contents)?;
-
-    // Parse the JSON in order to extract the configuration parameters
-    let Configuration {
-        assets: Assets { document_path, font_path },
-        visual_options:
-            VisualOptions { font_size, top_margin, left_margin, characters_per_line, line_height },
-        window_settings: WindowSettings { is_window_fullscreen, window_size },
-    } = serde_json::from_str(&contents)?;
-    log::info!(
-        "The configuration file `{}` has been found and loaded successfully",
-        configuration_file_path.display()
-    );
-
-    // Extract the window width and height
-    let WindowSize { width: window_width, height: window_height } = window_size;
-    log::info!(
-        "The document {:?} will be loaded with the font {:?}, font size {}, top margin {}, left margin {}, line height {} and {} characters per line",
-        document_path.as_path(),
-        font_path.as_path(),
-        font_size,
-        top_margin,
-        left_margin,
-        line_height,
-        characters_per_line,
-    );
-
-    // Create the event loop which can accept custom events generated by the user
-    let event_loop: EventLoop<_> =
-        EventLoopBuilder::<RenderThreadEvent>::with_user_event().build()?;
-
-    let mut builder = WindowBuilder::new()
-        .with_resizable(false)
-        .with_title(format!("TeXtr - {}", match document_path.as_path().file_name() {
-            Some(file_name) => match file_name.to_str() {
-                Some(file_name) => file_name,
-                None => return Err(anyhow::Error::msg("The file name is not valid, can't convert it internally to an usable format")),
-            },
-            None => return Err(anyhow::Error::msg("The file at the given document path doesn't have a filename which can be extracted")),
-        }));
-
-    // If the setting is fullscreen, then configure it to borderless...
-    if is_window_fullscreen {
-        builder = builder.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-    } else {
-        // ...otherwise, construct the window at the center of the screen of the
-        // primary monitor with the width and height taken from the configuration file
-        let monitor = match event_loop.primary_monitor() {
-            Some(monitor) => monitor,
-            None => {
-                return Err(anyhow::Error::msg("The primary monitor is not available"));
-            }
-        };
-        let monitor_size = monitor.size();
-        let position = PhysicalPosition::new(
-            (monitor_size.width - window_width) as i32 / 2,
-            (monitor_size.height - window_height) as i32 / 2,
-        );
-        builder = builder
-            .with_inner_size(PhysicalSize::new(window_width, window_height))
-            .with_position(position);
-    }
-
-    let window = builder.build(&event_loop)?;
-
-    // Initialize the render state as pre-configured in the `RenderState::new` function
-    let mut render_state = pollster::block_on(graphics::RenderState::new(window))?;
-
-    // Create the channel for sending the events from the logic thread to the main loop
-    let (logic_events_sender, logic_events_receiver) = crossbeam_channel::unbounded();
-    // Create the channel for sending the events from the main loop to the logic thread
-    let (render_events_sender, render_events_receiver) = crossbeam_channel::unbounded();
-
-    // Bootstrap the thread for handling the logic events, which are separate
-    // from the rendering which happens in the render thread
-    let _ = std::thread::spawn(move || {
-        // Collect the outcome of the logic events thread as it's might return an error
-        let logic_events_thread = move || -> Result<(), anyhow::Error> {
-            // Initialize the library Freetype in order to use the font glyphs; it is using
-            // the FFI (foreign function interface) to call the underlying library
-            let library = freetype::Library::init()?;
-            // Load the font from the font path
-            let font_face = library.new_face(font_path, 0)?;
-            // Configure the pixel size of the font in units of pixel
-            font_face.set_pixel_sizes(0, font_size)?;
-
-            // Load the text contained in the file at the document path
-            let mut text = std::fs::read_to_string(document_path.as_path())?;
-            log::debug!("Imported the text: {:?}", text);
-
-            // Set up the starting line height based on the font size, window height and top-most margin
-            let mut vertical_position =
-                window_height as f32 - font_size as f32 - top_margin - line_height;
-
-            let mut characters_map: HashMap<char, CharacterGeometry> = HashMap::new();
-
-            // Load the glyphs associated to the characters in the text from the chosen font
-            let mut skipped_characters = Vec::new();
-            for character_to_load in text.nfc().unique() {
-                match load_character(
-                    &font_face,
-                    character_to_load,
-                    &mut characters_map,
-                    &logic_events_sender,
-                ) {
-                    Ok(()) => (),
-                    Err(error) => {
-                        // Downcast the error in order to match it with the underlying error type
-                        match error.downcast_ref::<SkippedCharacter>() {
-                            Some(skipped_character) => {
-                                // If the character is skipped, then add it to the list of skipped characters
-                                skipped_characters.push(skipped_character.0);
-                            }
-                            None => {
-                                // If the error is not a skipped character, then propagate it through the stack
-                                return Err(error);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !skipped_characters.is_empty() {
-                log::warn!(
-                    "Skipping the characters {:?} in the initial loading of the text because the associated glyphs have either zero width or height",
-                    skipped_characters
-                );
-            }
-
-            log::debug!("Characters requested to be loaded: {}", characters_map.len());
-
-            // Calculate the advance of the space character separately as it is used
-            // to know in advance how much space to skip when a character is problematic
-            font_face.load_char(' ' as usize, freetype::face::LoadFlag::RENDER)?;
-            let glyph = font_face.glyph();
-            let space_character_advance = (glyph.advance().x as u32) >> 6;
-
-            // Initialize the input buffer, which is used to keep track of the characters
-            // pressed on the keyboard by the user
-            let mut input_buffer = Vec::new();
-
-            // Assign a value to cap the ticks-per-second in the logic events loop
-            let ticks_per_second_cap: Option<u32> = Some(60);
-            let desired_iteration_duration = ticks_per_second_cap
-                .map(|ticks_per_second| Duration::from_secs_f64(1.0 / ticks_per_second as f64));
-            
-            let mut iteration_count = 0;
-            let mut is_first_iteration = true;
-
-            // Each iteration of the logic events loop...
-            loop {
-                // ...register the start time for the current iteration as a checkpoint
-                let iteration_start_time = Instant::now();
-                log::trace!(
-                    "Logic events loop iteration number {iteration_count} start time: {:?}",
-                    iteration_start_time
-                );
-
-                // ...fetch the custom events sent by the render thread to the logic events
-                // thread, such as the request to save the file or to register a pressed character...
-                while let Ok(render_event) = render_events_receiver.try_recv() {
-                    match render_event {
-                        RenderThreadEvent::SaveFile => {
-                            // Save the text to the file path given
-                            let mut file = File::create(document_path.as_path())?;
-                            file.write_all(text.clone().as_bytes())?;
-                            log::info!(
-                                "The document has been successfully saved to the path: {:?}",
-                                document_path
-                            );
-                        }
-                        RenderThreadEvent::RegisterCharacter(character) => {
-                            input_buffer.push(character);
-                        }
-                    }
-                }
-
-                // ...insert the characters present in the input buffer at the end of the text
-                for input_character in input_buffer.iter().copied() {
-                    text.push(input_character);
-
-                    // Convert the character to unicode normalized form C (NFC)...
-                    let character_to_load = match input_character.nfc().next() {
-                        Some(character) => character,
-                        None => {
-                            return Err(anyhow::Error::msg(format!(
-                                "Unable to normalize the character {:?} to unicode normalized form C",
-                                input_character
-                            )));
-                        }
-                    };
-                    // ...and then see if the character is already present in the map, if it isn't
-                    // then attempt to load it from the specified font
-                    if !characters_map.contains_key(&character_to_load)
-                        && !skipped_characters.contains(&input_character)
-                    {
-                        match load_character(
-                            &font_face,
-                            character_to_load,
-                            &mut characters_map,
-                            &logic_events_sender,
-                        ) {
-                            Ok(()) => (),
-                            Err(error) => {
-                                skipped_characters.push(input_character);
-                                log::warn!("{:?}", error);
-                            }
-                        }
-                    }
-                }
-
-                // ...check if any character is have been inserted by the user and if this
-                // happened, then begin calculating the new text layout
-                if !input_buffer.is_empty() || is_first_iteration {
-                    // Each iteration of the loop, wrap the text in lines...
-                    let wrapped_text: Vec<_> = textwrap::wrap(&text, characters_per_line as usize)
-                        .iter()
-                        .map(|line| line.to_string())
-                        .collect();
-
-                    // ...and then calculate the positions at which the vertices need to be in order
-                    // to render the text correctly onto the window by respecting the margin constraints
-                    let mut raw_vertices_data = Vec::new();
-                    let mut text_characters = Vec::new();
-
-                    // For each line in the wrapped text...
-                    for line in wrapped_text.iter() {
-                        let mut horizontal_origin = left_margin;
-
-                        // ...draw each character therein present...
-                        for character in line.chars() {
-                            // ...otherwise, retrieve the character geometry from the map...
-                            let character_data = match characters_map.get(&character) {
-                                Some(character) => character,
-                                None => {
-                                    // ...and if it's not present, then skip the character
-                                    // and display it as a space character; this can only happen with
-                                    // very rare glyphs that aren't commonly used in text
-                                    // (such as htticks_per_second://www.compart.com/en/unicode/U+2005)
-                                    horizontal_origin += space_character_advance as f32;
-                                    continue;
-                                }
-                            };
-
-                            let x = horizontal_origin + character_data.bearing.x as f32;
-                            let y = vertical_position
-                                - (character_data.size.y - character_data.bearing.y) as f32;
-
-                            let width = character_data.size.x as f32;
-                            let height = character_data.size.y as f32;
-
-                            // ...calculate the positions of the two triangles making up a single
-                            // text glyph by knowing the geometry of the glyph...
-                            let raw_vertex_data = calculate_glyph_vertices(x, y, width, height);
-
-                            raw_vertices_data.push(raw_vertex_data);
-                            text_characters.push(character);
-
-                            // ...and in the end, move the horizontal origin of the text by the
-                            // character advance in order to draw the characters side-to-side...
-                            horizontal_origin += (character_data.advance >> 6) as f32;
-                        }
-
-                        // ...conclude by moving the line height below by the font size
-                        vertical_position -= font_size as f32 + line_height;
-                    }
-
-                    // ... after the calculations are done, send to the render thread the newly
-                    // calculated vertices and the characters present in the text, discarding the spaces...
-                    logic_events_sender.send(LogicThreadEvent::UpdateVertexBuffers {
-                        vertex_data: raw_vertices_data,
-                        text_characters,
-                    })?;
-
-                    // ...and in the end, clear the input buffer and request a rendering
-                    input_buffer.clear();
-                    logic_events_sender.send(LogicThreadEvent::RequestRendering)?;
-                }
-
-                // ...before starting the next iteration of the loop, reset the line height to
-                // its original value, as computed in the beginning of the loop
-                vertical_position =
-                    window_height as f32 - font_size as f32 - top_margin - line_height;
-
-                // Cap the ticks-per-second in order to not cause a performance hog
-                if let Some(desired_iteration_duration) = desired_iteration_duration {
-                    let elapsed_time = iteration_start_time.elapsed();
-                    if elapsed_time < desired_iteration_duration {
-                        // Do not busy wait, but instead request the CPU to idle
-                        std::thread::sleep(desired_iteration_duration - elapsed_time);
-                    }
-                }
-
-                iteration_count += 1;
-                is_first_iteration = false;
-            }
-
-            // This is only left because the compiler requires a return type, but it will never be reached
-            #[allow(unreachable_code)]
-            Ok(())
-        };
-
-        // Gracefully handle the termination of the loop due to an error
-        match logic_events_thread() {
-            Ok(_) => (),
-            Err(error) => {
-                log::warn!("The logic events thread has been terminated");
-                log::error!("{:?}", error);
-            }
-        }
-    });
-
-    // Run the render events loop in the main thread; each iteration of the loop...
-    event_loop.run(move |event, target| {
-        // Request the event loop to wait for events instead of polling them constantly
-        target.set_control_flow(ControlFlow::Wait);
-
-        // ...fetch the logic thread events, which can either be a request...
-        while let Ok(logic_event) = logic_events_receiver.try_recv() {
-            match logic_event {
-                // ...to update the vertex buffers
-                LogicThreadEvent::UpdateVertexBuffers { vertex_data, text_characters } => {
-                    render_state.update_vertex_buffer(vertex_data, text_characters)
-                }
-                // ...or to load the new textures
-                LogicThreadEvent::LoadTextureBindGroup { character_to_load, bitmap_data } => {
-                    // Use the received bitmap data to generate the glyph texture
-                    let texture = Texture::from_bitmap_data(
-                        &render_state,
-                        bitmap_data,
-                        Some(format!("Glyph Texture {:?}", character_to_load).as_str()),
-                    );
-
-                    // Load the texture bind group for the glyph
-                    render_state.load_texture(texture, character_to_load);
-                    log::debug!("Loaded the texture bind group for the glyph {:?}", character_to_load);
-                }
-                // ...or to request a redraw of the window frame
-                LogicThreadEvent::RequestRendering => {
-                    render_state.window().request_redraw();
-                }
-            }
-        }
-
-        // ...check if any modifiers have been pressed before parsing any other events
-        let mut ctrl_is_pressed = false;
         match event {
-            Event::WindowEvent { ref event, .. } => match event {
-                WindowEvent::ModifiersChanged(modifiers) => match modifiers.state() {
-                    ModifiersState::CONTROL => {
-                        ctrl_is_pressed = true;
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
+                    ..
+                }
+                | WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::ReceivedCharacter(character) => {
+                    match character {
+                        '\u{8}' => {
+                            text.pop();
+                        }
+                        _ if character != '\u{7f}' => text.push(character),
+                        _ => {}
                     }
-                    _ => (),
-                },
+                    display.gl_window().window().request_redraw();
+                }
                 _ => (),
             },
-            _ => (),
-        };
+            Event::RedrawRequested(_) => {
+                let scale = display.gl_window().window().scale_factor();
+                let (width, _): (u32, _) = display.gl_window().window().inner_size().into();
+                let scale = scale as f32;
 
-        // ...parse the possible combinations of keys with modifiers which could have
-        // been pressed since the last iteration
-        match event {
-            Event::WindowEvent { ref event, .. } => {
-                match event {
-                    // If the user presses Ctrl + S key, save the document
-                    WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Escape), ..
-                            },
-                        ..
-                    } => {
-                        if ctrl_is_pressed {
-                            match render_events_sender.send(RenderThreadEvent::SaveFile) {
-                                Ok(_) => {
-                                    log::debug!("Ctrl + S pressed, the document has been requested to be saved");
-                                }
-                                Err(error) => {
-                                    log::error!(
-                                        "Unable to send the `SaveFile` event to the render thread: {}",
-                                        minimize_first_letter(error.to_string())
-                                    );
-                                    return;
-                                }
-                            };
-                        }
-                    }
-                    _ => (),
+                let glyphs = layout_paragraph(&font, Scale::uniform(24.0 * scale), width, &text);
+                for glyph in &glyphs {
+                    cache.queue_glyph(0, glyph.clone());
                 }
+                cache
+                    .cache_queued(|rect, data| {
+                        cache_texture.main_level().write(
+                            glium::Rect {
+                                left: rect.min.x,
+                                bottom: rect.min.y,
+                                width: rect.width(),
+                                height: rect.height(),
+                            },
+                            glium::texture::RawImage2d {
+                                data: Cow::Borrowed(data),
+                                width: rect.width(),
+                                height: rect.height(),
+                                format: glium::texture::ClientFormat::U8,
+                            },
+                        );
+                    })
+                    .unwrap();
+
+                let uniforms = uniform! {
+                    texture_sampler: cache_texture.sampled().magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest)
+                };
+
+                let color = [0.0, 0.0, 0.0, 1.0];
+                let (screen_width, screen_height) = {
+                    let (w, h) = display.get_framebuffer_dimensions();
+                    (w as f32, h as f32)
+                };
+                let origin = point(0.0, 0.0);
+                let vertices: Vec<Vertex> = glyphs
+                    .iter()
+                    .filter_map(|glyph| cache.rect_for(0, glyph).ok().flatten())
+                    .flat_map(|(texture_rectangle, screen_rectangle)| {
+                        let glyph_rectangle = Rect {
+                            min: origin
+                                + (vector(
+                                    screen_rectangle.min.x as f32 / screen_width - 0.5,
+                                    1.0 - screen_rectangle.min.y as f32 / screen_height - 0.5,
+                                )) * 2.0,
+                            max: origin
+                                + (vector(
+                                    screen_rectangle.max.x as f32 / screen_width - 0.5,
+                                    1.0 - screen_rectangle.max.y as f32 / screen_height - 0.5,
+                                )) * 2.0,
+                        };
+                        vec![
+                            Vertex {
+                                position: [glyph_rectangle.min.x, glyph_rectangle.max.y],
+                                texture_coordinates: [
+                                    texture_rectangle.min.x,
+                                    texture_rectangle.max.y,
+                                ],
+                                color,
+                            },
+                            Vertex {
+                                position: [glyph_rectangle.min.x, glyph_rectangle.min.y],
+                                texture_coordinates: [
+                                    texture_rectangle.min.x,
+                                    texture_rectangle.min.y,
+                                ],
+                                color,
+                            },
+                            Vertex {
+                                position: [glyph_rectangle.max.x, glyph_rectangle.min.y],
+                                texture_coordinates: [
+                                    texture_rectangle.max.x,
+                                    texture_rectangle.min.y,
+                                ],
+                                color,
+                            },
+                            Vertex {
+                                position: [glyph_rectangle.max.x, glyph_rectangle.min.y],
+                                texture_coordinates: [
+                                    texture_rectangle.max.x,
+                                    texture_rectangle.min.y,
+                                ],
+                                color,
+                            },
+                            Vertex {
+                                position: [glyph_rectangle.max.x, glyph_rectangle.max.y],
+                                texture_coordinates: [
+                                    texture_rectangle.max.x,
+                                    texture_rectangle.max.y,
+                                ],
+                                color,
+                            },
+                            Vertex {
+                                position: [glyph_rectangle.min.x, glyph_rectangle.max.y],
+                                texture_coordinates: [
+                                    texture_rectangle.min.x,
+                                    texture_rectangle.max.y,
+                                ],
+                                color,
+                            },
+                        ]
+                    })
+                    .collect();
+
+                let vertex_buffer = glium::VertexBuffer::new(&display, &vertices).unwrap();
+
+                let mut target = display.draw();
+                target.clear_color(1.0, 1.0, 1.0, 0.0);
+                target
+                    .draw(
+                        &vertex_buffer,
+                        glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList),
+                        &program,
+                        &uniforms,
+                        &glium::DrawParameters {
+                            blend: glium::Blend::alpha_blending(),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+
+                target.finish().unwrap();
             }
             _ => (),
         }
-
-        // ...and then parse all the other possible window events
-        match event {
-            Event::WindowEvent { ref event, .. } => {
-                match event {
-                    // Check if the window has been requested to be closed or the user has pressed escape key
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Escape), ..
-                            },
-                        ..
-                    } => target.exit(),
-                    // Check if the window has been resized and update the render state accordingly
-                    WindowEvent::Resized(physical_size) => {
-                        render_state.resize(*physical_size);
-                    }
-                    // Check if the user has typed a character and if this happened, then send the pressed 
-                    // character to the logic events loop for further processing
-                    WindowEvent::KeyboardInput {
-                        event: KeyEvent { text: Some(text_input), state: ElementState::Pressed, .. },
-                        ..
-                    } => {
-                        for character in text_input.chars() {
-                            match render_events_sender.send(RenderThreadEvent::RegisterCharacter(character)) {
-                                Ok(_) => {
-                                    log::debug!("The character {:?} has been registered", character);
-                                }
-                                Err(error) => {
-                                    log::error!(
-                                        "Unable to send the `RegisterCharacter` event to the render thread: {:?}",
-                                        minimize_first_letter(error.to_string())
-                                    );
-                                    return;
-                                }
-                            };
-                        }
-                    }
-                    // RedrawRequested will only trigger once, unless we manually request it.
-                    WindowEvent::RedrawRequested => {
-                        // Redraw the current frame by employing the pre-configured
-                        // `RenderState::render` function, this can either succeed or fail...
-                        match render_state.render() {
-                            // ...if it succeeds, then proceed and return from this function
-                            std::result::Result::Ok(_) => (),
-                            Err(error) => {
-                                match error.downcast_ref::<wgpu::SurfaceError>() {
-                                    Some(wgpu_error) => match wgpu_error {
-                                        // ...otherwise, reconfigure the surface if it was lost
-                                        wgpu::SurfaceError::Lost => render_state.resize(render_state.physical_size),
-                                        // ...or if the system is out of memory, we should probably quit
-                                        wgpu::SurfaceError::OutOfMemory => target.exit(),
-                                        // ..all other errors (Outdated, Timeout) should typically be resolved by the
-                                        // next frame, thus we just log it and continue
-                                        wgpu_error => {
-                                            log::error!("{:?}", wgpu_error)
-                                        }
-                                    },
-                                    None => log::error!("{:?}", error),
-                                }
-                            }
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            _ => (),
-        }
-    })?;
-
-    Ok(())
-}
-
-/// This function capitalizes a string, it is used for standardizing the error message.
-fn capitalize_first_letter(string: String) -> String {
-    let mut characters = string.chars();
-    match characters.next() {
-        None => String::new(),
-        Some(character) => character.to_uppercase().chain(characters).collect(),
-    }
-}
-
-fn minimize_first_letter(string: String) -> String {
-    let mut characters = string.chars();
-    match characters.next() {
-        None => String::new(),
-        Some(character) => character.to_lowercase().chain(characters).collect(),
-    }
-}
-
-/// This is the main function, which is the entry point of the program.
-fn main() {
-    // Run the fallible main which contains all the code, and then gracefully
-    // terminate if an error is returned by reporting the error
-    match fallible_main() {
-        Ok(_) => {}
-        Err(error) => {
-            log::error!("{}", capitalize_first_letter(error.to_string()));
-        }
-    }
+    });
 }

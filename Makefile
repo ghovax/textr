@@ -7,6 +7,6 @@ docs:
 	cargo doc
 
 test:
-	@for config_path in $(shell ls assets/*.json); do \
-		RUST_LOG=$(RUST_LOG) cargo run -- --config $${config_path} ; \
+	@for document_path in $(shell ls assets/*.json); do \
+		RUST_LOG=$(RUST_LOG) cargo run -- --config $${document_path} ; \
 	done
