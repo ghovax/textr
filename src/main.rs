@@ -1,58 +1,100 @@
+use clap::Parser;
 use glium::{
     glutin::{
         self, dpi::PhysicalSize, event_loop::EventLoop, window::WindowBuilder, ContextBuilder,
     },
-    implement_vertex, program, uniform, Surface as _,
+    implement_vertex,
+    uniforms::UniformsStorage,
+    Program, Surface as _,
 };
-use glutin::{
-    event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::ControlFlow,
-};
-use rusttype::gpu_cache::Cache;
+use glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use itertools::Itertools as _;
+use rusttype::{gpu_cache::Cache, Point};
 use rusttype::{point, vector, Font, PositionedGlyph, Rect, Scale};
-use std::borrow::Cow;
+use std::collections::HashMap;
 use std::env;
-use std::error::Error;
+use std::{borrow::Cow, path::PathBuf};
+use unicode_normalization::UnicodeNormalization as _;
+
+const BORDER_MARGIN: f32 = 20.0;
+const HEADING_SEPARATION: f32 = 57.0;
+
+fn layout_heading<'a>(
+    font_styles_map: &HashMap<String, FontStyles<'a>>,
+    text_element: &TextElement,
+    scale_factor: f32,
+    caret: &mut Point<f32>,
+) -> Vec<PositionedGlyph<'a>> {
+    layout_paragraph(font_styles_map, &vec![text_element.clone()], scale_factor, caret)
+}
 
 fn layout_paragraph<'a>(
-    font: &Font<'a>,
-    scale: Scale,
-    width: u32,
-    text: &str,
+    font_styles_map: &HashMap<String, FontStyles<'a>>,
+    text_elements: &Vec<TextElement>,
+    scale_factor: f32,
+    caret: &mut Point<f32>,
 ) -> Vec<PositionedGlyph<'a>> {
     let mut positioned_glyphs = Vec::new();
-    let vertical_metrics = font.v_metrics(scale);
-    let advance_height =
-        vertical_metrics.ascent - vertical_metrics.descent + vertical_metrics.line_gap;
-    let mut caret = point(0.0, vertical_metrics.ascent);
-    let mut last_glyph_id = None;
-    for character in text.chars() {
-        if character.is_control() {
-            match character {
-                '\r' => {
-                    caret = point(0.0, caret.y + advance_height);
+
+    let max_vertical_ascent = *text_elements
+        .iter()
+        .map(|text_element| {
+            let font_style = font_styles_map.get(&text_element.language).unwrap();
+            let font = match text_element.style.font_style.as_str() {
+                "bold" => font_style.bold_font.as_ref().unwrap(),
+                "italic" => font_style.italic_font.as_ref().unwrap(),
+                "normal" => &font_style.normal_font,
+                _ => panic!("unable to determine the font style"),
+            };
+            let scale = Scale::uniform(text_element.style.font_size as f32 * scale_factor);
+
+            let vertical_metrics = font.v_metrics(scale);
+            vertical_metrics.ascent
+        })
+        .collect_vec()
+        .iter()
+        .max_by(|a, b| a.total_cmp(b))
+        .unwrap();
+    caret.y += max_vertical_ascent;
+
+    for text_element in text_elements {
+        let font_style = font_styles_map.get(&text_element.language).unwrap();
+        let font = match text_element.style.font_style.as_str() {
+            "bold" => font_style.bold_font.as_ref().unwrap(),
+            "italic" => font_style.italic_font.as_ref().unwrap(),
+            "normal" => &font_style.normal_font,
+            _ => panic!("unable to determine the font style"),
+        };
+        let scale = Scale::uniform(text_element.style.font_size as f32 * scale_factor);
+
+        let vertical_metrics = font.v_metrics(scale);
+        let advance_height =
+            vertical_metrics.ascent - vertical_metrics.descent + vertical_metrics.line_gap;
+
+        let mut last_glyph_id = None;
+
+        for character in text_element.text.chars().nfc() {
+            if character.is_control() {
+                match character {
+                    '\r' | '\n' => {
+                        *caret = point(BORDER_MARGIN, caret.y + advance_height);
+                    }
+                    _ => (),
                 }
-                '\n' => {}
-                _ => {}
+                continue;
             }
-            continue;
-        }
-        let base_glyph = font.glyph(character);
-        if let Some(id) = last_glyph_id.take() {
-            caret.x += font.pair_kerning(scale, id, base_glyph.id());
-        }
-        last_glyph_id = Some(base_glyph.id());
-        let mut glyph = base_glyph.scaled(scale).positioned(caret);
-        if let Some(bounding_box) = glyph.pixel_bounding_box() {
-            if bounding_box.max.x > width as i32 {
-                caret = point(0.0, caret.y + advance_height);
-                glyph.set_position(caret);
-                last_glyph_id = None;
+            let base_glyph = font.glyph(character);
+            if let Some(id) = last_glyph_id.take() {
+                caret.x += font.pair_kerning(scale, id, base_glyph.id());
             }
+            last_glyph_id = Some(base_glyph.id());
+            let glyph = base_glyph.scaled(scale).positioned(*caret);
+
+            caret.x += glyph.unpositioned().h_metrics().advance_width;
+            positioned_glyphs.push(glyph);
         }
-        caret.x += glyph.unpositioned().h_metrics().advance_width;
-        positioned_glyphs.push(glyph);
     }
+
     positioned_glyphs
 }
 
@@ -65,63 +107,123 @@ struct Vertex {
 
 implement_vertex!(Vertex, position, texture_coordinates, color);
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Document {
+    charset: String,
+    root: Vec<Content>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+enum Content {
+    Paragraph { content: Vec<TextElement> },
+    Heading { content: TextElement },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub struct TextElement {
+    pub style: Style,
+    #[serde(rename = "lang")]
+    pub language: String,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub struct Style {
+    pub color: String,
+    pub font_style: String,
+    pub font_size: u32,
+}
+
+struct FontStyles<'a> {
+    normal_font: Font<'a>,
+    italic_font: Option<Font<'a>>,
+    bold_font: Option<Font<'a>>,
+}
+
+#[derive(Parser)]
+#[command(version, long_about = None)]
+struct CliArguments {
+    #[arg(short = 'd', long = "document", help = "")]
+    document_path: PathBuf,
+}
+
 fn main() {
     if cfg!(target_os = "linux") && env::var("WINIT_UNIX_BACKEND").is_err() {
         env::set_var("WINIT_UNIX_BACKEND", "x11");
     }
+    env_logger::init();
 
-    let font_data = std::fs::read("fonts/WenQuanYiMicroHei.ttf").unwrap();
-    let font = Font::try_from_vec(font_data).unwrap();
+    let mut font_styles_map: HashMap<String, FontStyles> = HashMap::new();
+
+    let english_font = FontStyles {
+        normal_font: Font::try_from_bytes(include_bytes!(
+            "../fonts/Noto_Sans/NotoSans-Regular.ttf"
+        ))
+        .unwrap(),
+        italic_font: Some(
+            Font::try_from_bytes(include_bytes!("../fonts/Noto_Sans/NotoSans-Italic.ttf")).unwrap(),
+        ),
+        bold_font: Some(
+            Font::try_from_bytes(include_bytes!("../fonts/Noto_Sans/NotoSans-Bold.ttf")).unwrap(),
+        ),
+    };
+    font_styles_map.insert("en-US".to_string(), english_font);
+
+    let japanese_font = FontStyles {
+        normal_font: Font::try_from_bytes(include_bytes!(
+            "../fonts/Noto_Sans_JP/NotoSansJP-Regular.ttf"
+        ))
+        .unwrap(),
+        italic_font: None,
+        bold_font: Some(
+            Font::try_from_bytes(include_bytes!("../fonts/Noto_Sans_JP/NotoSansJP-Bold.ttf"))
+                .unwrap(),
+        ),
+    };
+    font_styles_map.insert("ja-JP".to_string(), japanese_font);
+
+    let simplified_chinese_font = FontStyles {
+        normal_font: Font::try_from_bytes(include_bytes!(
+            "../fonts/Noto_Sans_SC/NotoSansSC-Regular.ttf"
+        ))
+        .unwrap(),
+        italic_font: None,
+        bold_font: Some(
+            Font::try_from_bytes(include_bytes!("../fonts/Noto_Sans_SC/NotoSansSC-Bold.ttf"))
+                .unwrap(),
+        ),
+    };
+    font_styles_map.insert("zh-CN".to_string(), simplified_chinese_font);
+
+    let CliArguments { document_path } = CliArguments::parse();
+
+    let document_content = std::fs::read_to_string(&document_path).unwrap();
+    let document: Document = serde_json::from_str(&document_content).unwrap();
 
     let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(512, 512))
-        .with_title("RustType GPU cache example");
+        .with_inner_size(PhysicalSize::new(1600, 900))
+        .with_title(format!("{}", document_path.display()));
     let context = ContextBuilder::new().with_vsync(true);
     let event_loop = EventLoop::new();
     let display = glium::Display::new(window, context, &event_loop).unwrap();
 
-    let scale = display.gl_window().window().scale_factor();
+    let program = Program::from_source(
+        &display,
+        include_str!("vertexShader.glsl"),
+        include_str!("fragmentShader.glsl"),
+        None,
+    )
+    .unwrap();
 
-    let (cache_width, cache_height) = ((512.0 * scale) as u32, (512.0 * scale) as u32);
-    let mut cache: Cache<'static> = Cache::builder()
-        .dimensions(cache_width, cache_height)
-        .build();
-
-    let program = program!(
-    &display,
-    140 => {
-            vertex: r#"
-#version 140
-
-in vec2 position;
-in vec2 texture_coordinates;
-in vec4 color;
-
-out vec2 vertex_texture_coordinates;
-out vec4 vertex_color;
-
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-    vertex_texture_coordinates = texture_coordinates;
-    vertex_color = color;
-}
-            "#,
-
-            fragment: r#"
-#version 140
-
-uniform sampler2D texture_sampler;
-
-in vec2 vertex_texture_coordinates;
-in vec4 vertex_color;
-
-out vec4 fragment_color;
-
-void main() {
-    fragment_color = vertex_color * vec4(1.0, 1.0, 1.0, texture(texture_sampler, vertex_texture_coordinates).r);
-}
-            "#
-    }).unwrap();
+    let scale_factor = display.gl_window().window().scale_factor() as f32;
+    let (cache_width, cache_height) =
+        ((1600.0 * scale_factor) as u32, (900.0 * scale_factor) as u32);
+    let mut cache: Cache<'static> = Cache::builder().dimensions(cache_width, cache_height).build();
 
     let cache_texture = glium::texture::Texture2d::with_format(
         &display,
@@ -135,13 +237,8 @@ void main() {
         glium::texture::MipmapsOption::NoMipmap,
     )
     .unwrap();
-    let mut text: String = "A japanese poem:\r
-\r
-色は匂へど散りぬるを我が世誰ぞ常ならむ有為の奥山今日越えて浅き夢見じ酔ひもせず\r
-\r
-Feel free to type out some text, and delete it with Backspace. \
-You can also try resizing this window."
-        .into();
+
+    let mut glyphs = Vec::new();
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_wait();
@@ -149,127 +246,132 @@ You can also try resizing this window."
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            ..
-                        },
+                    input: KeyboardInput { virtual_keycode: Some(VirtualKeyCode::Escape), .. },
                     ..
                 }
-                | WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                | WindowEvent::CloseRequested => control_flow.set_exit(),
                 WindowEvent::ReceivedCharacter(character) => {
                     match character {
                         '\u{8}' => {
-                            text.pop();
+                            // TODO
                         }
-                        _ if character != '\u{7f}' => text.push(character),
-                        _ => {}
+                        _ if character != '\u{7f}' => {
+                            // TODO
+                        }
+                        _ => (),
                     }
                     display.gl_window().window().request_redraw();
                 }
                 _ => (),
             },
             Event::RedrawRequested(_) => {
-                let scale = display.gl_window().window().scale_factor();
-                let (width, _): (u32, _) = display.gl_window().window().inner_size().into();
-                let scale = scale as f32;
+                let scale_factor = display.gl_window().window().scale_factor() as f32;
+                // let (screen_width, _): (u32, _) = display.gl_window().window().inner_size().into();
 
-                let glyphs = layout_paragraph(&font, Scale::uniform(24.0 * scale), width, &text);
-                for glyph in &glyphs {
-                    cache.queue_glyph(0, glyph.clone());
+                let mut caret = point(BORDER_MARGIN, BORDER_MARGIN);
+                for content in document.root.iter() {
+                    let positioned_glyphs = match content {
+                        Content::Heading { content: text_element } => {
+                            let glyphs = layout_heading(
+                                &font_styles_map,
+                                text_element,
+                                scale_factor,
+                                &mut caret,
+                            );
+                            caret.y += HEADING_SEPARATION;
+                            glyphs
+                        }
+                        Content::Paragraph { content: text_elements } => layout_paragraph(
+                            &font_styles_map,
+                            text_elements,
+                            scale_factor,
+                            &mut caret,
+                        ),
+                    };
+                    caret.x = BORDER_MARGIN;
+
+                    for glyph in &positioned_glyphs {
+                        cache.queue_glyph(0, glyph.clone());
+                    }
+                    glyphs.extend(positioned_glyphs);
                 }
                 cache
-                    .cache_queued(|rect, data| {
+                    .cache_queued(|rectangle, data| {
                         cache_texture.main_level().write(
                             glium::Rect {
-                                left: rect.min.x,
-                                bottom: rect.min.y,
-                                width: rect.width(),
-                                height: rect.height(),
+                                left: rectangle.min.x,
+                                bottom: rectangle.min.y,
+                                width: rectangle.width(),
+                                height: rectangle.height(),
                             },
                             glium::texture::RawImage2d {
                                 data: Cow::Borrowed(data),
-                                width: rect.width(),
-                                height: rect.height(),
+                                width: rectangle.width(),
+                                height: rectangle.height(),
                                 format: glium::texture::ClientFormat::U8,
                             },
                         );
                     })
                     .unwrap();
 
-                let uniforms = uniform! {
-                    texture_sampler: cache_texture.sampled().magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest)
-                };
+                let uniforms = UniformsStorage::new(
+                    "texture_sampler",
+                    cache_texture
+                        .sampled()
+                        .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
+                );
 
                 let color = [0.0, 0.0, 0.0, 1.0];
                 let (screen_width, screen_height) = {
-                    let (w, h) = display.get_framebuffer_dimensions();
-                    (w as f32, h as f32)
+                    let (width, height) = display.get_framebuffer_dimensions();
+                    (width as f32, height as f32)
                 };
                 let origin = point(0.0, 0.0);
                 let vertices: Vec<Vertex> = glyphs
                     .iter()
                     .filter_map(|glyph| cache.rect_for(0, glyph).ok().flatten())
-                    .flat_map(|(texture_rectangle, screen_rectangle)| {
+                    .flat_map(|(texture, screen)| {
                         let glyph_rectangle = Rect {
                             min: origin
                                 + (vector(
-                                    screen_rectangle.min.x as f32 / screen_width - 0.5,
-                                    1.0 - screen_rectangle.min.y as f32 / screen_height - 0.5,
+                                    screen.min.x as f32 / screen_width - 0.5,
+                                    1.0 - screen.min.y as f32 / screen_height - 0.5,
                                 )) * 2.0,
                             max: origin
                                 + (vector(
-                                    screen_rectangle.max.x as f32 / screen_width - 0.5,
-                                    1.0 - screen_rectangle.max.y as f32 / screen_height - 0.5,
+                                    screen.max.x as f32 / screen_width - 0.5,
+                                    1.0 - screen.max.y as f32 / screen_height - 0.5,
                                 )) * 2.0,
                         };
                         vec![
                             Vertex {
                                 position: [glyph_rectangle.min.x, glyph_rectangle.max.y],
-                                texture_coordinates: [
-                                    texture_rectangle.min.x,
-                                    texture_rectangle.max.y,
-                                ],
+                                texture_coordinates: [texture.min.x, texture.max.y],
                                 color,
                             },
                             Vertex {
                                 position: [glyph_rectangle.min.x, glyph_rectangle.min.y],
-                                texture_coordinates: [
-                                    texture_rectangle.min.x,
-                                    texture_rectangle.min.y,
-                                ],
+                                texture_coordinates: [texture.min.x, texture.min.y],
                                 color,
                             },
                             Vertex {
                                 position: [glyph_rectangle.max.x, glyph_rectangle.min.y],
-                                texture_coordinates: [
-                                    texture_rectangle.max.x,
-                                    texture_rectangle.min.y,
-                                ],
+                                texture_coordinates: [texture.max.x, texture.min.y],
                                 color,
                             },
                             Vertex {
                                 position: [glyph_rectangle.max.x, glyph_rectangle.min.y],
-                                texture_coordinates: [
-                                    texture_rectangle.max.x,
-                                    texture_rectangle.min.y,
-                                ],
+                                texture_coordinates: [texture.max.x, texture.min.y],
                                 color,
                             },
                             Vertex {
                                 position: [glyph_rectangle.max.x, glyph_rectangle.max.y],
-                                texture_coordinates: [
-                                    texture_rectangle.max.x,
-                                    texture_rectangle.max.y,
-                                ],
+                                texture_coordinates: [texture.max.x, texture.max.y],
                                 color,
                             },
                             Vertex {
                                 position: [glyph_rectangle.min.x, glyph_rectangle.max.y],
-                                texture_coordinates: [
-                                    texture_rectangle.min.x,
-                                    texture_rectangle.max.y,
-                                ],
+                                texture_coordinates: [texture.min.x, texture.max.y],
                                 color,
                             },
                         ]
@@ -294,6 +396,8 @@ You can also try resizing this window."
                     .unwrap();
 
                 target.finish().unwrap();
+
+                glyphs.clear();
             }
             _ => (),
         }
