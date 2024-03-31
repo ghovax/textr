@@ -38,18 +38,48 @@ fn layout_paragraph<'a>(
 
     let max_vertical_ascent = *text_elements
         .iter()
-        .map(|text_element| {
-            let font_style = font_styles_map.get(&text_element.language).unwrap();
+        .filter_map(|text_element| {
+            let font_style = match font_styles_map.get(&text_element.language) {
+                Some(font_style) => font_style,
+                None => {
+                    log::error!(
+                        "Unable to find the font style for the language {}",
+                        text_element.language
+                    );
+                    return None;
+                }
+            };
             let font = match text_element.style.font_style.as_str() {
-                "bold" => font_style.bold_font.as_ref().unwrap(),
-                "italic" => font_style.italic_font.as_ref().unwrap(),
+                "bold" => match font_style.bold_font.as_ref() {
+                    Some(bold_font) => bold_font,
+                    None => {
+                        log::error!(
+                            "Unable to find the bold font for the language {}",
+                            text_element.language
+                        );
+                        return None;
+                    }
+                },
+                "italic" => match font_style.italic_font.as_ref() {
+                    Some(italic_font) => italic_font,
+                    None => {
+                        log::error!(
+                            "Unable to find the italic font for the language {}",
+                            text_element.language
+                        );
+                        return None;
+                    }
+                },
                 "normal" => &font_style.normal_font,
-                _ => panic!("unable to determine the font style"),
+                font_style => {
+                    log::error!("Unable to find the font style: {}", font_style);
+                    return None;
+                }
             };
             let scale = Scale::uniform(text_element.style.font_size as f32 * scale_factor);
 
             let vertical_metrics = font.v_metrics(scale);
-            vertical_metrics.ascent
+            Some(vertical_metrics.ascent)
         })
         .collect_vec()
         .iter()
@@ -58,12 +88,38 @@ fn layout_paragraph<'a>(
     caret.y += max_vertical_ascent;
 
     for text_element in text_elements {
-        let font_style = font_styles_map.get(&text_element.language).unwrap();
+        let font_style = match font_styles_map.get(&text_element.language) {
+            Some(font_style) => font_style,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Unable to find the font style for the language {}",
+                    text_element.language
+                ));
+            }
+        };
         let font = match text_element.style.font_style.as_str() {
-            "bold" => font_style.bold_font.as_ref().unwrap(),
-            "italic" => font_style.italic_font.as_ref().unwrap(),
+            "bold" => match font_style.bold_font.as_ref() {
+                Some(bold_font) => bold_font,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Unable to find the bold font for the language {}",
+                        text_element.language
+                    ));
+                }
+            },
+            "italic" => match font_style.italic_font.as_ref() {
+                Some(italic_font) => italic_font,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Unable to find the italic font for the language {}",
+                        text_element.language
+                    ));
+                }
+            },
             "normal" => &font_style.normal_font,
-            _ => panic!("unable to determine the font style"),
+            font_style => {
+                return Err(anyhow::anyhow!("Unable to find the font style: {}", font_style));
+            }
         };
         let scale = Scale::uniform(text_element.style.font_size as f32 * scale_factor);
 
@@ -147,10 +203,18 @@ struct FontStyles<'a> {
 #[derive(Parser)]
 #[command(version, long_about = None)]
 struct CliArguments {
-    #[arg(short = 'd', long = "document-path", help = "")]
+    #[arg(long = "document-path", help = "Path to the document file in the JSON format")]
     document_path: Option<PathBuf>,
-    #[arg(long = "test-flag", help = "", value_enum)]
+    #[arg(
+        long = "test-flag",
+        help = "Test flag used to select the test type, either generating the reference images or comparing with them",
+        value_enum
+    )]
     test_flag: Option<TestFlag>,
+    #[arg(long = "window-width", help = "Width of the window")]
+    window_width: u32,
+    #[arg(long = "window-height", help = "Height of the window")]
+    window_height: u32,
 }
 
 #[derive(Debug, Copy, Clone, clap::ValueEnum)]
@@ -214,20 +278,37 @@ fn fallible_main() -> Result<()> {
     };
     font_styles_map.insert("zh-CN".to_string(), simplified_chinese_font);
 
-    let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(1600, 900));
+    log::info!(
+        "Initialized the program with the languages {:?} supported",
+        font_styles_map.keys().collect_vec()
+    );
+
+    let CliArguments {
+        document_path,
+        test_flag,
+        window_width,
+        window_height,
+    } = CliArguments::parse();
+
+    let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(window_width, window_height));
     let context = ContextBuilder::new().with_vsync(true);
     let event_loop = EventLoop::new();
-    let display = glium::Display::new(window, context, &event_loop)?;
+    let display = glium::Display::new(window, context, &event_loop)
+        .map_err(|error| anyhow::anyhow!("Unable to create the display: {}", error))?;
 
     let program = Program::from_source(
         &display,
         include_str!("glyphVertexShader.glsl"),
         include_str!("glyphFragmentShader.glsl"),
         None,
-    )?;
+    )
+    .map_err(|error| anyhow::anyhow!("Unable to create the program: {}", error))?;
 
     let scale_factor = display.gl_window().window().scale_factor() as f32;
-    let (cache_width, cache_height) = ((1600.0 * scale_factor) as u32, (900.0 * scale_factor) as u32);
+    let (cache_width, cache_height) = (
+        (window_width as f32 * scale_factor) as u32,
+        (window_height as f32 * scale_factor) as u32,
+    );
     let mut cache: Cache<'static> = Cache::builder().dimensions(cache_width, cache_height).build();
 
     let cache_texture = glium::texture::Texture2d::with_format(
@@ -240,12 +321,8 @@ fn fallible_main() -> Result<()> {
         },
         glium::texture::UncompressedFloatFormat::U8,
         glium::texture::MipmapsOption::NoMipmap,
-    )?;
-
-    let CliArguments {
-        document_path,
-        test_flag,
-    } = CliArguments::parse();
+    )
+    .map_err(|error| anyhow::anyhow!("Unable to create the cache texture: {}", error))?;
 
     if let Some(test_flag) = test_flag {
         test_main(
@@ -256,15 +333,20 @@ fn fallible_main() -> Result<()> {
             &cache_texture,
             &program,
         )?;
+        return Ok(());
     }
 
     if document_path.is_none() {
-        return Err(anyhow::anyhow!("No document path provided"));
+        return Err(anyhow::anyhow!(
+            "No document path provided, you need to provide a path to a document"
+        ));
     }
     #[allow(clippy::unwrap_used)]
     let document_path = document_path.unwrap();
-    let document_content = std::fs::read_to_string(&document_path)?;
-    let document: Document = serde_json::from_str(&document_content)?;
+    let document_content = std::fs::read_to_string(&document_path)
+        .map_err(|error| anyhow::anyhow!("Unable to read the document into a string: {}", error))?;
+    let document: Document = serde_json::from_str(&document_content)
+        .map_err(|error| anyhow::anyhow!("Unable to deserialize the document: {}", error))?;
 
     let window_title = format!("{}", document_path.display());
     {
@@ -343,7 +425,7 @@ fn test_main(
     program: &Program,
 ) -> Result<()> {
     log::info!("Executing with the test flag: {:?}", test_flag);
-    let documents: Vec<_> = if let Ok(document_files) = std::fs::read_dir("assets") {
+    let documents = if let Ok(document_files) = std::fs::read_dir("assets") {
         document_files
             .filter_map(|document_entry| {
                 document_entry.ok().and_then(|document_file| {
@@ -354,8 +436,28 @@ fn test_main(
                             .extension()
                             .map_or(false, |extension| extension == "json")
                     {
-                        let document_content = std::fs::read_to_string(&document_file_path).unwrap();
-                        let document: Document = serde_json::from_str(&document_content).unwrap();
+                        let document_content = match std::fs::read_to_string(&document_file_path) {
+                            Ok(content) => content,
+                            Err(error) => {
+                                log::error!(
+                                    "Unable to read the document {}: {}",
+                                    document_file_path.display(),
+                                    error
+                                );
+                                return None;
+                            }
+                        };
+                        let document: Document = match serde_json::from_str(&document_content) {
+                            Ok(document) => document,
+                            Err(error) => {
+                                log::error!(
+                                    "Unable to parse the document {:?}: {}",
+                                    document_file_path.display(),
+                                    error
+                                );
+                                return None;
+                            }
+                        };
 
                         Some((document, document_file_path))
                     } else {
@@ -363,16 +465,19 @@ fn test_main(
                     }
                 })
             })
-            .collect()
+            .collect_vec()
     } else {
         return Err(anyhow::anyhow!("Unable to read the documents directory"));
     };
+    log::info!("Found {} documents to test", documents.len(),);
 
     let mut similarity_scores = Vec::new();
     for (document, document_path) in documents.iter() {
         draw_glyphs(display, document, font_styles_map, cache, cache_texture, program)?;
 
-        let front_buffer: glium::texture::RawImage2d<'_, u8> = display.read_front_buffer()?;
+        let front_buffer: glium::texture::RawImage2d<'_, u8> = display
+            .read_front_buffer()
+            .map_err(|error| anyhow::anyhow!("Unable to read the front buffer: {}", error))?;
         let test_image_buffer =
             image::ImageBuffer::from_raw(front_buffer.width, front_buffer.height, front_buffer.data.into_owned())
                 .ok_or(anyhow::anyhow!("Unable to create the test image buffer"))?;
@@ -381,32 +486,63 @@ fn test_main(
         let document_file_name = document_path
             .file_stem()
             .ok_or(anyhow::anyhow!(
-                "Unable to get the file name for the document {}",
+                "Unable to get the file name for the document {:?}",
                 document_path.display()
             ))?
             .to_str()
             .ok_or(anyhow::anyhow!(
-                "Unable to convert the file name of the document {} to a string compatible with UTF-8",
+                "Unable to convert the file name of the document {:?} to a string compatible with UTF-8",
                 document_path.display()
             ))?;
         let image_path = format!("reference_images/{}.png", document_file_name);
 
         match test_flag {
             TestFlag::GenerateReferenceImages => {
-                test_image.save(image_path)?;
+                test_image
+                    .save(image_path)
+                    .map_err(|error| anyhow::anyhow!("Unable to save the reference image: {}", error))?;
             }
             TestFlag::CompareWithReferenceImages => {
-                let reference_image = image::open(image_path)?.into_rgba8();
-                let comparison_results = image_compare::rgba_hybrid_compare(&test_image, &reference_image)?;
+                let reference_image = image::open(image_path)
+                    .map_err(|error| {
+                        anyhow::anyhow!(
+                            "Unable to open the reference image for the document {:?}: {}",
+                            document_path.display(),
+                            error
+                        )
+                    })?
+                    .into_rgba8();
+
+                let comparison_results = image_compare::rgba_hybrid_compare(&test_image, &reference_image)
+                    .map_err(|error| anyhow::anyhow!("Unable to compare the reference image: {}", error))?;
                 similarity_scores.push((document_file_name, comparison_results.score));
             }
         }
     }
 
-    let document_file_names = similarity_scores
+    let document_file_names = documents
         .iter()
-        .map(|(document_file_name, _)| document_file_name)
+        .filter_map(|(_, document_path)| match document_path.file_stem() {
+            Some(file_stem) => match file_stem.to_str() {
+                Some(file_stem) => Some(file_stem.to_string()),
+                None => {
+                    log::error!(
+                        "Unable to convert the file name of the document {:?} to a string compatible with UTF-8",
+                        document_path.display()
+                    );
+                    None
+                }
+            },
+            None => {
+                log::error!(
+                    "Unable to get the file stem for the document {:?}",
+                    document_path.display()
+                );
+                None
+            }
+        })
         .collect_vec();
+
     match test_flag {
         TestFlag::GenerateReferenceImages => {
             log::info!("Generated reference images for the documents {:?}", document_file_names);
@@ -463,22 +599,25 @@ fn draw_glyphs(
         }
         glyphs.extend(positioned_glyphs);
     }
-    cache.cache_queued(|rectangle, data| {
-        cache_texture.main_level().write(
-            glium::Rect {
-                left: rectangle.min.x,
-                bottom: rectangle.min.y,
-                width: rectangle.width(),
-                height: rectangle.height(),
-            },
-            glium::texture::RawImage2d {
-                data: Cow::Borrowed(data),
-                width: rectangle.width(),
-                height: rectangle.height(),
-                format: glium::texture::ClientFormat::U8,
-            },
-        );
-    })?;
+    #[allow(clippy::blocks_in_conditions)]
+    cache
+        .cache_queued(|rectangle, data| {
+            cache_texture.main_level().write(
+                glium::Rect {
+                    left: rectangle.min.x,
+                    bottom: rectangle.min.y,
+                    width: rectangle.width(),
+                    height: rectangle.height(),
+                },
+                glium::texture::RawImage2d {
+                    data: Cow::Borrowed(data),
+                    width: rectangle.width(),
+                    height: rectangle.height(),
+                    format: glium::texture::ClientFormat::U8,
+                },
+            );
+        })
+        .map_err(|error| anyhow::anyhow!("Unable to cache the queued glyphs: {}", error))?;
 
     let uniforms = UniformsStorage::new(
         "texture_sampler",
@@ -544,23 +683,28 @@ fn draw_glyphs(
         })
         .collect();
 
-    let vertex_buffer = glium::VertexBuffer::new(display, &vertices)?;
+    let vertex_buffer = glium::VertexBuffer::new(display, &vertices)
+        .map_err(|error| anyhow::anyhow!("Unable to create the vertex buffer: {}", error))?;
 
     let mut target = display.draw();
     target.clear_color(1.0, 1.0, 1.0, 0.0);
-    target.draw(
-        &vertex_buffer,
-        glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList),
-        program,
-        &uniforms,
-        &glium::DrawParameters {
-            blend: glium::Blend::alpha_blending(),
-            backface_culling: glium::BackfaceCullingMode::CullCounterClockwise,
-            ..Default::default()
-        },
-    )?;
+    target
+        .draw(
+            &vertex_buffer,
+            glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList),
+            program,
+            &uniforms,
+            &glium::DrawParameters {
+                blend: glium::Blend::alpha_blending(),
+                backface_culling: glium::BackfaceCullingMode::CullCounterClockwise,
+                ..Default::default()
+            },
+        )
+        .map_err(|error| anyhow::anyhow!("Unable to draw the glyphs: {}", error))?;
 
-    target.finish()?;
+    target
+        .finish()
+        .map_err(|error| anyhow::anyhow!("Unable to finish the drawing operation: {}", error))?;
 
     Ok(())
 }
