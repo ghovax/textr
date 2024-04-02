@@ -1,6 +1,6 @@
-#![warn(clippy::unwrap_used)]
+#![deny(clippy::unwrap_used, clippy::expect_used)]
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use custom_error::CustomError;
 use glium::glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use glium::glutin::event_loop::EventLoop;
@@ -9,8 +9,11 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(debug_assertions)]
+use clap::ValueEnum;
+
 use crate::configuration_format::Configuration;
-use crate::{graphics::GraphicsHandle, layouting::FontStyles};
+use crate::{graphics::GraphicSystem, layouting::FontStyles};
 
 mod configuration_format;
 mod custom_error;
@@ -18,34 +21,24 @@ mod document_format;
 mod graphics;
 mod layouting;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(version, long_about = None)]
 struct CliArguments {
-    #[command(subcommand)]
-    command: Option<Commands>,
-    #[arg(long = "config", value_name = "json_file")]
-    configuration_file_path: PathBuf,
-    #[arg(long = "debug")]
+    #[arg(long = "document", value_name = "json_file")]
+    document_path: Option<PathBuf>,
+    #[arg(long = "config", value_name = "json_config_file")]
+    configuration_file_path: Option<PathBuf>,
+    #[arg(long = "debug", value_name = "bool", action = clap::ArgAction::SetTrue, default_value_t = false)]
     debug_mode: bool,
+    #[cfg(debug_assertions)]
+    #[arg(long = "test", value_enum, value_name = "test_flag")]
+    test_flag: Option<TestFlag>,
 }
 
-#[derive(Subcommand)]
-enum Commands {
-    Test {
-        #[command(subcommand)]
-        test_flag: Option<TestFlag>,
-    },
-    Load {
-        #[arg(long = "document")]
-        document_path: Option<PathBuf>,
-    },
-}
-
-#[derive(Debug, Copy, Clone, Subcommand)]
+#[cfg(debug_assertions)]
+#[derive(Debug, Copy, Clone, ValueEnum)]
 enum TestFlag {
-    #[command(name = "generate")]
     GenerateReferenceImages,
-    #[command(name = "compare")]
     CompareWithReferenceImages,
 }
 
@@ -60,21 +53,27 @@ fn fallible_main() -> Result<(), CustomError> {
         env::set_var("WINIT_UNIX_BACKEND", "x11");
     }
 
-    let CliArguments { command, configuration_file_path, debug_mode } = CliArguments::parse();
-
-    if debug_mode {
+    let arguments = CliArguments::parse();
+    if arguments.debug_mode {
         env_logger::builder().filter_level(log::LevelFilter::Debug).init();
     } else {
         env_logger::builder().filter_level(log::LevelFilter::Info).init();
     }
 
+    log::debug!("The program has been initialized with the parameters: {:?}", arguments);
+
     let mut font_styles_map: HashMap<String, FontStyles> = HashMap::new();
     layouting::load_fonts(&mut font_styles_map)?;
-    log::info!(
-        "Initialized the program with the languages {:?} supported",
-        font_styles_map.keys().collect_vec()
-    );
+    log::debug!("Only the languages {:?} are supported", font_styles_map.keys().collect_vec());
 
+    if arguments.configuration_file_path.is_none() {
+        return Err(CustomError::with_context(
+            "The configuration file path is missing, you need to provide one via the `config` flag"
+                .into(),
+        ));
+    }
+    #[allow(clippy::unwrap_used)]
+    let configuration_file_path = arguments.configuration_file_path.unwrap();
     let configuration_file_contents =
         std::fs::read_to_string(configuration_file_path).map_err(|error| {
             CustomError::with_source("Failed to read the configuration file".into(), error.into())
@@ -83,55 +82,53 @@ fn fallible_main() -> Result<(), CustomError> {
         serde_json::from_str(&configuration_file_contents).map_err(|error| {
             CustomError::with_source("Failed to parse the configuration file".into(), error.into())
         })?;
+    log::debug!("The loaded configuration is: {:?}", configuration);
 
     let event_loop = EventLoop::new();
-    let mut graphics_handle = GraphicsHandle::new(&event_loop, configuration)?;
+    let mut graphic_system = GraphicSystem::new(&event_loop, configuration)?;
+    log::debug!("The graphic system has been successfully initialized");
 
-    if let Some(commands) = command {
-        match commands {
-            Commands::Test { test_flag } => {
-                if let Some(test_flag) = test_flag {
-                    graphics_handle.run_tests(test_flag, font_styles_map)?;
-                } else {
-                    log::error!("No test flag specified, the possible test flags are `generate` and `compare`");
-                }
-            }
-            Commands::Load { document_path } => {
-                let (document, document_path) = document_format::load_document(document_path)?;
-                graphics_handle.set_window_title(document_path);
-
-                event_loop.run(move |event, _, control_flow| {
-                    control_flow.set_wait();
-
-                    match event {
-                        Event::WindowEvent { event, .. } => match event {
-                            WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        virtual_keycode: Some(VirtualKeyCode::Escape), ..
-                                    },
-                                ..
-                            }
-                            | WindowEvent::CloseRequested => control_flow.set_exit(),
-
-                            _ => (),
-                        },
-                        Event::RedrawRequested(_) => {
-                            if let Err(error) =
-                                graphics_handle.draw_glyphs(&document, &font_styles_map)
-                            {
-                                log::error!("{}", error);
-                                control_flow.set_exit_with_code(1);
-                            }
-                        }
-                        _ => (),
-                    }
-                });
-            }
+    #[cfg(debug_assertions)]
+    if let Some(test_flag) = arguments.test_flag {
+        log::debug!(
+            "The program has been initialized in test-mode with the test flag: {:?}",
+            test_flag
+        );
+        if arguments.document_path.is_some() {
+            log::warn!(
+                "The document path provided via the `document` flag is ignored in test-mode"
+            );
         }
-    } else {
-        log::error!("No command specified, run instead with `--help` to see the possible commands");
+        graphic_system.run_tests(test_flag, font_styles_map)?;
+        return Ok(());
     }
 
-    Ok(())
+    let (document, document_path) = document_format::load_document(arguments.document_path)?;
+    log::debug!("The loaded document is: {:?}", document);
+    graphic_system.set_window_title(document_path);
+
+    event_loop.run(move |event, _, control_flow| {
+        control_flow.set_wait();
+
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::KeyboardInput {
+                    input: KeyboardInput { virtual_keycode: Some(VirtualKeyCode::Escape), .. },
+                    ..
+                }
+                | WindowEvent::CloseRequested => {
+                    control_flow.set_exit();
+                    log::debug!("The program has been requested to be closed");
+                }
+                _ => (),
+            },
+            Event::RedrawRequested(_) => {
+                if let Err(error) = graphic_system.draw_glyphs(&document, &font_styles_map) {
+                    log::error!("{}", error);
+                    control_flow.set_exit_with_code(1);
+                }
+            }
+            _ => (),
+        }
+    });
 }

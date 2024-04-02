@@ -1,6 +1,10 @@
-CMD = cargo run -- --debug --config configs/default_config.json 
+EXE = cargo run -- --debug --config configs/default_config.json
 
-all: run-all-sequentially
+# Visualize all the documents one by one sequentially
+all:
+	@for document_path in $(shell ls documents/*.json); do \
+		$(EXE) --document $${document_path} ; \
+	done
 
 # Remove all of the files created during compilation, and also the binary
 clean:
@@ -10,16 +14,13 @@ clean:
 docs:
 	cargo doc
 
-# Visualize all the documents one by one sequentially
-run-all-sequentially:
-	@for document in $(shell ls documents/*.json); do \
-		$(CMD) load --document $${document} ; \
-	done
-
 # Generate the reference images, setting the reference for the comparisons
 generate:
-	$(CMD) test generate
+	$(EXE) --test generate-reference-images
 
 # Run the comparison between the dynamically generated images and the reference images
 compare:
-	$(CMD) test compare
+	$(EXE) --test compare-with-reference-images
+
+install:
+	cargo install --path .

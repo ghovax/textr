@@ -1,4 +1,4 @@
-#![warn(clippy::unwrap_used)]
+#![deny(clippy::unwrap_used, clippy::expect_used)]
 
 use itertools::Itertools as _;
 use rusttype::Point;
@@ -76,7 +76,10 @@ pub fn layout_heading<'a>(
     scale_factor: f32,
     caret: &mut Point<f32>,
 ) -> Result<Vec<PositionedGlyph<'a>>, CustomError> {
-    layout_paragraph(font_styles_map, &vec![text_element.clone()], scale_factor, caret)
+    let glyphs =
+        layout_paragraph(font_styles_map, &vec![text_element.clone()], scale_factor, caret);
+    caret.y += HEADING_SEPARATION;
+    glyphs
 }
 
 pub fn layout_paragraph<'a>(

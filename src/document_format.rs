@@ -36,7 +36,7 @@ pub struct Style {
 pub fn load_document(document_path: Option<PathBuf>) -> Result<(Document, PathBuf), CustomError> {
     if document_path.is_none() {
         return Err(CustomError::with_context(
-            "No document path provided, you need to provide a path to a document".into(),
+            "No document path provided, you need to provide a path to a document via the `document` flag".into(),
         ));
     }
     #[allow(clippy::unwrap_used)]

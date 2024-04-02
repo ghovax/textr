@@ -21,8 +21,11 @@ image-compare = "0.4.0"
 rusttype = { version = "0.9.3", features = ["gpu_cache"] }
 hyphenation = "0.8.4"
 glium = "0.32.0"
-image = { version = "0.25.0",default-features = false, features = ["png"] }
+image = { version = "0.25.0", default-features = false, features = ["png"] }
 anyhow = "1.0.81"
 
 [profile.release]
 debug = true
+
+[profile.dev]
+opt-level = 1
