@@ -1,5 +1,8 @@
 {
-    "charset": "UTF-8",
+    "configuration": {
+        "window-width": 1600,
+        "window-height": 900
+    },
     "root": [
         {
             "type": "heading",

@@ -1,5 +1,8 @@
 {
-    "charset": "UTF-8",
+    "configuration": {
+        "window-width": 605,
+        "window-height": 400
+    },
     "root": [
         {
             "type": "heading",
@@ -10,7 +13,7 @@
                     "font-size": 40
                 },
                 "lang": "en-US",
-                "text": "Example Japanese Document"
+                "text": "Example Document"
             }
         },
         {
@@ -22,8 +25,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "ja-JP",
-                    "text": "こんにちは、"
+                    "lang": "en-US",
+                    "text": "This "
                 },
                 {
                     "style": {
@@ -31,8 +34,8 @@
                         "font-style": "bold",
                         "font-size": 32
                     },
-                    "lang": "ja-JP",
-                    "text": "世界"
+                    "lang": "en-US",
+                    "text": "word"
                 },
                 {
                     "style": {
@@ -40,17 +43,17 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "ja-JP",
-                    "text": "！"
+                    "lang": "en-US",
+                    "text": " is in bold, but "
                 },
                 {
                     "style": {
                         "color": "#000",
-                        "font-style": "bold",
+                        "font-style": "italic",
                         "font-size": 45
                     },
-                    "lang": "ja-JP",
-                    "text": "これ"
+                    "lang": "en-US",
+                    "text": "this one"
                 },
                 {
                     "style": {
@@ -58,8 +61,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "ja-JP",
-                    "text": "はイタリック体です。"
+                    "lang": "en-US",
+                    "text": " is in italic."
                 }
             ]
         }

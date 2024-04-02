@@ -8,5 +8,6 @@ in vec4 vertex_color;
 out vec4 fragment_color;
 
 void main() {
-    fragment_color = vertex_color * vec4(1.0, 1.0, 1.0, texture(texture_sampler, vertex_texture_coordinates).r);
+    float texture_sample = texture(texture_sampler, vertex_texture_coordinates).r;
+    fragment_color = vertex_color * vec4(1.0, 1.0, 1.0, texture_sample);
 }

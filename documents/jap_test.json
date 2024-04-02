@@ -1,5 +1,8 @@
 {
-    "charset": "UTF-8",
+    "configuration": {
+        "window-width": 900,
+        "window-height": 450
+    },
     "root": [
         {
             "type": "heading",
@@ -9,8 +12,8 @@
                     "font-style": "bold",
                     "font-size": 40
                 },
-                "lang": "zh-CN",
-                "text": "示例文档"
+                "lang": "en-US",
+                "text": "Example Japanese Document"
             }
         },
         {
@@ -22,8 +25,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "zh-CN",
-                    "text": "这个"
+                    "lang": "ja-JP",
+                    "text": "こんにちは、"
                 },
                 {
                     "style": {
@@ -31,8 +34,8 @@
                         "font-style": "bold",
                         "font-size": 32
                     },
-                    "lang": "zh-CN",
-                    "text": "词"
+                    "lang": "ja-JP",
+                    "text": "世界"
                 },
                 {
                     "style": {
@@ -40,8 +43,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "zh-CN",
-                    "text": "是加粗的，但是"
+                    "lang": "ja-JP",
+                    "text": "！"
                 },
                 {
                     "style": {
@@ -49,8 +52,8 @@
                         "font-style": "bold",
                         "font-size": 45
                     },
-                    "lang": "zh-CN",
-                    "text": "这个"
+                    "lang": "ja-JP",
+                    "text": "これ"
                 },
                 {
                     "style": {
@@ -58,8 +61,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "zh-CN",
-                    "text": "是斜体的。"
+                    "lang": "ja-JP",
+                    "text": "はイタリック体です。"
                 }
             ]
         }

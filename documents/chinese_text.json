@@ -1,5 +1,8 @@
 {
-    "charset": "UTF-8",
+    "configuration": {
+        "window-width": 842,
+        "window-height": 600
+    },
     "root": [
         {
             "type": "heading",
@@ -9,8 +12,8 @@
                     "font-style": "bold",
                     "font-size": 40
                 },
-                "lang": "en-US",
-                "text": "Example Document"
+                "lang": "zh-CN",
+                "text": "示例文档"
             }
         },
         {
@@ -22,8 +25,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "en-US",
-                    "text": "This "
+                    "lang": "zh-CN",
+                    "text": "这个"
                 },
                 {
                     "style": {
@@ -31,8 +34,8 @@
                         "font-style": "bold",
                         "font-size": 32
                     },
-                    "lang": "en-US",
-                    "text": "word"
+                    "lang": "zh-CN",
+                    "text": "词"
                 },
                 {
                     "style": {
@@ -40,17 +43,17 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "en-US",
-                    "text": " is in bold, but "
+                    "lang": "zh-CN",
+                    "text": "是加粗的，但是"
                 },
                 {
                     "style": {
                         "color": "#000",
-                        "font-style": "italic",
+                        "font-style": "bold",
                         "font-size": 45
                     },
-                    "lang": "en-US",
-                    "text": "this one"
+                    "lang": "zh-CN",
+                    "text": "这个"
                 },
                 {
                     "style": {
@@ -58,8 +61,8 @@
                         "font-style": "normal",
                         "font-size": 25
                     },
-                    "lang": "ja-JP",
-                    "text": " is in italic."
+                    "lang": "zh-CN",
+                    "text": "是斜体的。"
                 }
             ]
         }
