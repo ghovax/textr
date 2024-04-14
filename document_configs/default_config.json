@@ -1,0 +1,20 @@
+{
+    "pageWidth": 1237,
+    "pageHeight": 652,
+    "fontSize": 46,
+    "globalMagnification": 0.94,
+    "fontAssociations": [
+        {
+            "fontFamily": "CMU Sans Serif Roman",
+            "fontFilePath": "fonts/computer-modern/cmunss.ttf"
+        },
+        {
+            "fontFamily": "CMU Serif Roman",
+            "fontFilePath": "fonts/computer-modern/cmunrm.ttf"
+        },
+        {
+            "fontFamily": "GNU Unifont",
+            "fontFilePath": "fonts/unifont-15.1.05.otf"
+        }
+    ]
+}

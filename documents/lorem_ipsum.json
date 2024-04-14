@@ -1,0 +1,45 @@
+{
+    "rootEnvironment": {
+        "fontFamily": "CMU Serif Roman",
+        "environmentContents": [
+            {
+                "initialCaretPosition": [
+                    23.0,
+                    62.2
+                ],
+                "lineContents": [
+                    {
+                        "textString": "Lorem ipsum abcd 123 x "
+                    },
+                    {
+                        "fontFamily": "CMU Sans Serif Roman",
+                        "environmentContents": [
+                            {
+                                "textString": "def"
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "initialCaretPosition": [
+                    23.0,
+                    122.2
+                ],
+                "lineContents": [
+                    {
+                        "textString": "Lorem ipsum abcd 123 x "
+                    },
+                    {
+                        "fontFamily": "CMU Sans Serif Roman",
+                        "environmentContents": [
+                            {
+                                "textString": "def"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}
