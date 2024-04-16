@@ -1,17 +1,7 @@
 {
-    "testMode": "validateImages",
     "useDebugMode": true,
     "logFilesFolder": "log",
-    "testSetups": [
-        {
-            "documentConfigurationFilePath": "document_configs/default_config.json",
-            "documentPath": "documents/lorem_ipsum.json",
-            "referenceImagePath": "reference_images/lorem_ipsum.png"
-        },
-        {
-            "documentConfigurationFilePath": "document_configs/default_config.json",
-            "documentPath": "documents/rand_utf8.json",
-            "referenceImagePath": "reference_images/rand_utf8.png"
-        }
-    ]
+    "documentConfigurationsFolder": "document_configs",
+    "documentsFilesFolder": "documents",
+    "referenceImagesFolder": "reference_images"
 }

@@ -4,14 +4,14 @@ use clap::Parser;
 use std::path::PathBuf;
 use traceable_error::TraceableError;
 
-use crate::document::Document;
+use crate::document::{render_document_to_image, Document};
 use crate::document_configuration::DocumentConfiguration;
-use crate::image_system::{DocumentInterface as _, ImageSystem};
+use crate::fonts_configuration::FontsConfiguration;
 
 mod batch_test;
 mod document;
 mod document_configuration;
-mod image_system;
+mod fonts_configuration;
 mod traceable_error;
 
 #[derive(Parser, Debug)]
@@ -21,6 +21,8 @@ struct CliArguments {
     document_path: PathBuf,
     #[arg(long = "document-configuration", value_name = "json_config_file")]
     document_configuration_file_path: PathBuf,
+    #[arg(long = "fonts-configuration", value_name = "json_font_config_file")]
+    fonts_configuration_file_path: PathBuf,
     #[arg(long = "debug", value_name = "bool", action = clap::ArgAction::SetTrue, default_value_t = false)]
     use_debug_mode: bool,
     #[arg(long = "output-image", value_enum, value_name = "image_path")]
@@ -50,6 +52,11 @@ fn fallible_main() -> Result<(), TraceableError> {
         arguments
     );
 
+    let fonts_configuration = FontsConfiguration::from_path(
+        &arguments.fonts_configuration_file_path,
+    )?;
+    log::debug!("The loaded font configuration is: {:?}", fonts_configuration);
+
     let document_configuration =
         DocumentConfiguration::from_path(&arguments.document_configuration_file_path)?;
     log::debug!("The loaded configuration is: {:?}", document_configuration);
@@ -57,9 +64,7 @@ fn fallible_main() -> Result<(), TraceableError> {
     let document = Document::from_path(&arguments.document_path)?;
     log::debug!("The loaded document is: {:?}", document);
 
-    let mut image_system = ImageSystem {};
-    let image = image_system
-        .render_document(&document, &document_configuration)
+    let image = render_document_to_image(&document, &document_configuration, &fonts_configuration)
         .map_err(|error| {
             TraceableError::with_source("Failed to render the document".into(), error.into())
         })?;

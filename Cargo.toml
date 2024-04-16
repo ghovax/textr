@@ -20,6 +20,7 @@ image = { version = "0.25.0", default-features = false, features = ["png"] }
 anyhow = "1.0.81"
 chrono = "0.4.37"
 rayon = "1.10.0"
+rand = "0.8.5"
 
 [profile.release]
 debug = true

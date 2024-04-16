@@ -1,54 +1,28 @@
-// #![deny(clippy::unwrap_used, clippy::expect_used)]
-
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use clap::{Parser, ValueEnum};
     use itertools::Itertools as _;
+    use rand::distributions::Alphanumeric;
+    use rand::seq::SliceRandom;
+    use rand::Rng as _;
     use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator};
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
 
-    use crate::document::Document;
+    use crate::document::{render_document_to_image, Document, DocumentContent};
     use crate::document_configuration::DocumentConfiguration;
-    use crate::image_system::{DocumentInterface as _, ImageSystem};
+    use crate::fonts_configuration::{FontAssociation, FontsConfiguration};
     use crate::traceable_error::{minimize_first_letter, TraceableError};
-
-    #[derive(Debug, Copy, Clone, ValueEnum)]
-    enum TestMode {
-        GenerateImages,
-        ValidateImages,
-    }
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct TestConfiguration {
-        pub test_mode: String,
         pub use_debug_mode: bool,
         pub log_files_folder: String,
-        pub test_setups: Vec<TestSetup>,
-    }
-
-    impl std::convert::TryFrom<std::string::String> for TestMode {
-        type Error = TraceableError;
-
-        fn try_from(value: std::string::String) -> Result<Self, Self::Error> {
-            match value.as_str() {
-                "generateImages" => Ok(TestMode::GenerateImages),
-                "validateImages" => Ok(TestMode::ValidateImages),
-                _ => Err(TraceableError::with_context(format!(
-                    "The test mode {:?} is not supported",
-                    value
-                ))),
-            }
-        }
-    }
-
-    #[derive(Debug, Serialize, Deserialize, Clone)]
-    #[serde(rename_all = "camelCase")]
-    pub struct TestSetup {
-        pub document_configuration_file_path: PathBuf,
-        pub document_path: PathBuf,
-        pub reference_image_path: PathBuf,
+        pub document_configurations_folder: String,
+        pub documents_files_folder: String,
+        pub reference_images_folder: String,
     }
 
     impl TestConfiguration {
@@ -72,132 +46,135 @@ mod tests {
         }
     }
 
-    #[derive(Parser, Debug)]
-    #[command(version, long_about = None)]
-    struct TestCliArguments {
-        #[arg(long = "test-configuration", value_name = "json_test_config_file")]
-        test_configuration_file_path: PathBuf,
-    }
-
     #[test]
-    fn batch_test_from_configuration_file() {
-        let test_arguments = TestCliArguments {
-            test_configuration_file_path: "test_configs/batch_test_basic_config.json".into(),
-        };
-
+    fn batch_validation_from_configuration_file() {
         let test_configuration =
-            TestConfiguration::from_path(test_arguments.test_configuration_file_path);
+            TestConfiguration::from_path("test_configs/batch_test_basic_config.json".into());
 
-        let failed_tests: Vec<_> = test_configuration
-            .test_setups
-            .par_iter()
-            .filter_map(|test_setup| {
-                if run_single_test(test_setup, &test_configuration).is_err() {
-                    Some((
-                        test_setup.document_path.clone(),
-                        test_setup.document_configuration_file_path.clone(),
-                    ))
-                } else {
-                    None
-                }
+        let fonts_configuration =
+            FontsConfiguration::from_path(&"fonts/default_fonts_config.json".into()).unwrap();
+
+        let document_configurations_files =
+            std::fs::read_dir(&test_configuration.document_configurations_folder)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "failed to read the document configurations folder: {}",
+                        minimize_first_letter(error.to_string())
+                    )
+                })
+                .map(|result| result.unwrap())
+                .collect_vec();
+        let documents_files = std::fs::read_dir(&test_configuration.documents_files_folder)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to read the documents files folder: {}",
+                    minimize_first_letter(error.to_string())
+                )
             })
-            .collect();
+            .map(|result| result.unwrap())
+            .collect_vec();
+
+        let mut similarity_scores = Vec::new();
+
+        for document_configuration_file in document_configurations_files.iter() {
+            let document_configuration =
+                DocumentConfiguration::from_path(&document_configuration_file.path()).unwrap();
+
+            let document_configuration_file_name = document_configuration_file
+                .file_name()
+                .into_string()
+                .unwrap();
+
+            for document_file in documents_files.iter() {
+                let document = Document::from_path(&document_file.path()).unwrap();
+
+                let document_file_name = document_file.file_name().into_string().unwrap();
+                let reference_image_path =
+                    PathBuf::from(&test_configuration.reference_images_folder).join(format!(
+                        "{}_{}.png",
+                        document_file_name, document_configuration_file_name
+                    ));
+
+                let test_image = render_document_to_image(
+                    &document,
+                    &document_configuration,
+                    &fonts_configuration,
+                )
+                .unwrap();
+
+                let reference_image = image::open(&reference_image_path).unwrap().into_rgba8();
+
+                let comparison_results =
+                    image_compare::rgba_hybrid_compare(&test_image, &reference_image)
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "failed to compare the test image with the reference image: {}",
+                                minimize_first_letter(error.to_string())
+                            )
+                        });
+                similarity_scores.push((document_file_name, comparison_results.score));
+            }
+        }
+
+        let failed_tests = similarity_scores
+            .iter()
+            .filter(|(_, similarity_score)| *similarity_score < 1.0)
+            .collect_vec();
 
         if !failed_tests.is_empty() {
             panic!("{} tests failed: {:?}", failed_tests.len(), failed_tests);
         }
     }
 
-    fn run_single_test(
-        test_setup: &TestSetup,
-        test_configuration: &TestConfiguration,
-    ) -> Result<(), TraceableError> {
-        let document_configuration =
-            DocumentConfiguration::from_path(&test_setup.document_configuration_file_path)?;
-        log::debug!(
-            "The loaded configuration to test is: {:?}",
-            document_configuration
-        );
+    fn generate_root_environment(
+        recursion_depth: usize,
+        font_associations: &Vec<FontAssociation>,
+    ) -> DocumentContent {
+        let mut random_number_generator = rand::thread_rng();
 
-        let document = Document::from_path(&test_setup.document_path)?;
-        log::debug!("The loaded document to test is: {:?}", document);
-
-        let mut image_system = ImageSystem {};
-        let test_image = image_system.render_document(&document, &document_configuration)?;
-
-        let document_file_name = test_setup.document_path
-            .file_stem()
-            .ok_or(TraceableError::with_context("Unable to get the file stem for the document".into()))?
-            .to_str()
-            .ok_or(TraceableError::with_context(format!(
-                "Unable to convert the file name of the document {:?} to a string compatible with UTF-8",
-                test_setup.document_path.display()
-            )))?;
-
-        let mut similarity_scores = Vec::new();
-        let test_mode = test_configuration.test_mode.clone().try_into()?;
-        match test_mode {
-            TestMode::GenerateImages => {
-                test_image
-                    .save(&test_setup.reference_image_path)
-                    .map_err(|error| {
-                        TraceableError::with_source(
-                            "Unable to save the reference image".into(),
-                            error.into(),
-                        )
-                    })?;
-            }
-            TestMode::ValidateImages => {
-                let reference_image = image::open(&test_setup.reference_image_path)
-                    .map_err(|error| {
-                        TraceableError::with_source(
-                            format!(
-                                "Unable to open the reference image for the document {:?}",
-                                document_file_name
-                            ),
-                            error.into(),
-                        )
-                    })?
-                    .into_rgba8();
-
-                let comparison_results = image_compare::rgba_hybrid_compare(
-                    &test_image,
-                    &reference_image,
-                )
-                .map_err(|error| {
-                    TraceableError::with_source("Unable to compare the images".into(), error.into())
-                })?;
-                similarity_scores.push((document_file_name, comparison_results.score));
-            }
+        if recursion_depth == 0 {
+            return DocumentContent::UnicodeCharacters {
+                text_string: random_number_generator
+                    .sample_iter(&Alphanumeric)
+                    .take(10)
+                    .map(char::from)
+                    .collect(),
+            };
         }
 
-        match test_mode {
-            TestMode::GenerateImages => {
-                log::info!(
-                    "Generated reference image for the document {:?}",
-                    document_file_name
-                );
-            }
-            TestMode::ValidateImages => {
-                #[allow(clippy::unwrap_used)]
-                let failed_tests = similarity_scores
-                    .iter()
-                    .filter(|(_, similarity_score)| *similarity_score < 1.0)
-                    .collect_vec();
-                if failed_tests.is_empty() {
-                    log::info!(
-                        "Successfully compared the document {:?} with the reference image",
-                        document_file_name
-                    );
-                } else {
-                    return Err(TraceableError::with_context(format!(
-                        "The document {:?} has failed the similarity test with the reference image",
-                        failed_tests
-                    )));
+        match random_number_generator.gen_range(0..3) {
+            0 => {
+                let font_association = font_associations
+                    .choose(&mut random_number_generator)
+                    .unwrap();
+                let environment_contents = (0..random_number_generator.gen_range(1..4))
+                    .map(|_| generate_root_environment(recursion_depth - 1, font_associations))
+                    .collect();
+                DocumentContent::Environment {
+                    font_family: font_association.font_family.to_owned(),
+                    environment_contents,
                 }
             }
+            1 => {
+                let initial_caret_position = vec![
+                    random_number_generator.gen_range(0.0..100.0),
+                    random_number_generator.gen_range(0.0..100.0),
+                ];
+                let line_contents = (0..random_number_generator.gen_range(1..4))
+                    .map(|_| generate_root_environment(recursion_depth - 1, font_associations))
+                    .collect();
+                DocumentContent::Line {
+                    initial_caret_position,
+                    line_contents,
+                }
+            }
+            _ => DocumentContent::UnicodeCharacters {
+                text_string: random_number_generator
+                    .sample_iter(&Alphanumeric)
+                    .take(10)
+                    .map(char::from)
+                    .collect(),
+            },
         }
-
-        Ok(())
     }
 }

@@ -1,3 +1,4 @@
+use image::{DynamicImage, Rgba, RgbaImage};
 use rusttype::{point, Point};
 use rusttype::{Font, PositionedGlyph, Scale};
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use std::path::PathBuf;
 use unicode_normalization::UnicodeNormalization as _;
 
 use crate::document_configuration::DocumentConfiguration;
+use crate::fonts_configuration::FontsConfiguration;
 use crate::traceable_error::TraceableError;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -54,7 +56,7 @@ pub enum DocumentContent {
 impl DocumentContent {
     pub fn layout(
         &self,
-        document_configuration: &DocumentConfiguration,
+        fonts_configuration: &FontsConfiguration,
         scale: Scale,
         font: Option<&Font<'static>>,
         caret: &mut Point<f32>,
@@ -65,7 +67,7 @@ impl DocumentContent {
                 font_family,
                 environment_contents,
             } => {
-                let raw_font_data_path = document_configuration.get_font_path(font_family).ok_or(
+                let raw_font_data_path = fonts_configuration.get_font_path(font_family).ok_or(
                     TraceableError::with_context(format!(
                         "Unable to find the font family {:?}",
                         font_family
@@ -83,7 +85,7 @@ impl DocumentContent {
 
                 for environment_content in environment_contents.iter() {
                     environment_content.layout(
-                        document_configuration,
+                        fonts_configuration,
                         scale,
                         Some(&environment_font),
                         caret,
@@ -107,7 +109,7 @@ impl DocumentContent {
 
                 for line_content in line_contents.iter() {
                     line_content.layout(
-                        document_configuration,
+                        fonts_configuration,
                         scale,
                         font,
                         caret,
@@ -138,4 +140,44 @@ impl DocumentContent {
 
         Ok(())
     }
+}
+
+pub(crate) fn render_document_to_image(
+    document: &Document,
+    document_configuration: &DocumentConfiguration,
+    fonts_configuration: &FontsConfiguration,
+) -> Result<RgbaImage, TraceableError> {
+    let scale = Scale::uniform(document_configuration.font_size as f32);
+    let mut positioned_glyphs = Vec::new();
+    document.root_environment.layout(
+        fonts_configuration,
+        scale,
+        None,
+        &mut point(0.0, 0.0),
+        &mut positioned_glyphs,
+    )?;
+
+    let mut image = DynamicImage::new_rgba8(
+        document_configuration.page_width,
+        document_configuration.page_height,
+    )
+    .to_rgba8();
+    let color = (0, 0, 0);
+
+    for glyph in positioned_glyphs {
+        if let Some(bounding_box) = glyph.pixel_bounding_box() {
+            // Draw the glyph into the image per-pixel by using the draw closure
+            glyph.draw(|x, y, coverage| {
+                image.put_pixel(
+                    // Offset the position by the glyph bounding box
+                    x + bounding_box.min.x as u32,
+                    y + bounding_box.min.y as u32,
+                    // Turn the coverage into an alpha value
+                    Rgba([color.0, color.1, color.2, (coverage * 255.0) as u8]),
+                )
+            });
+        }
+    }
+
+    Ok(image)
 }
