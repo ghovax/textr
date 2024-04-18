@@ -11,6 +11,26 @@
         {
             "fontFamily": "GNU Unifont",
             "fontFilePath": "fonts/unifont-15.1.05.otf"
+        },
+        {
+            "fontFamily": "Noto Color Emoji",
+            "fontFilePath": "fonts/Noto_Color_Emoji,Noto_Sans_Egyptian_Hieroglyphs,Noto_Sans_JP,Noto_Sans_Mono,Noto_Sans_SC/Noto_Color_Emoji/NotoColorEmoji-Regular.ttf"
+        },
+        {
+            "fontFamily": "Noto Sans Egyptian Hieroglyphs",
+            "fontFilePath": "fonts/Noto_Color_Emoji,Noto_Sans_Egyptian_Hieroglyphs,Noto_Sans_JP,Noto_Sans_Mono,Noto_Sans_SC/Noto_Sans_Egyptian_Hieroglyphs/NotoSansEgyptianHieroglyphs-Regular.ttf"
+        },
+        {
+            "fontFamily": "Noto Sans JP",
+            "fontFilePath": "fonts/Noto_Color_Emoji,Noto_Sans_Egyptian_Hieroglyphs,Noto_Sans_JP,Noto_Sans_Mono,Noto_Sans_SC/Noto_Sans_JP/NotoSansJP-VariableFont_wght.ttf"
+        },
+        {
+            "fontFamily": "Noto Sans Mono",
+            "fontFilePath": "fonts/Noto_Color_Emoji,Noto_Sans_Egyptian_Hieroglyphs,Noto_Sans_JP,Noto_Sans_Mono,Noto_Sans_SC/Noto_Sans_Mono/NotoSansMono-VariableFont_wdth,wght.ttf"
+        },
+        {
+            "fontFamily": "Noto Sans SC",
+            "fontFilePath": "fonts/Noto_Color_Emoji,Noto_Sans_Egyptian_Hieroglyphs,Noto_Sans_JP,Noto_Sans_Mono,Noto_Sans_SC/Noto_Sans_SC/NotoSansSC-VariableFont_wght.ttf"
         }
     ]
 }

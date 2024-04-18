@@ -1,0 +1,39 @@
+{
+    "documentConfigurationFilesFolder": "document_configs",
+    "configurationFilesToGenerate": 3,
+    "pageWidthRange": [
+        0.0,
+        2132.0
+    ],
+    "pageHeightRange": [
+        0.0,
+        1201.0
+    ],
+    "fontSizeRange": [
+        8,
+        64
+    ],
+    "globalMagnificationRange": [
+        0.5,
+        3.0
+    ],
+    "fontFamilies": [
+        "CMU Sans Serif Roman",
+        "CMU Serif Roman",
+        "GNU Unifont",
+        "Noto Color Emoji",
+        "Noto Sans JP",
+        "Noto Sans Mono"
+    ],
+    "documentsToGenerate": 10,
+    "documentsFolder": "documents",
+    "maxEnvironmentContents": 14,
+    "defaultDepth": 8,
+    "maxDepth": 10,
+    "initialCaretPositionRange": [
+        -10.0,
+        900.0
+    ],
+    "maxStringLength": 22,
+    "maxNumberOfElements": 9
+}

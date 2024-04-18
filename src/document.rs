@@ -166,14 +166,27 @@ pub(crate) fn render_document_to_image(
 
     for glyph in positioned_glyphs {
         if let Some(bounding_box) = glyph.pixel_bounding_box() {
+            // If the glyph's bounding box is out of the image's bounds, we don't draw it
+
             // Draw the glyph into the image per-pixel by using the draw closure
             glyph.draw(|x, y, coverage| {
+                if bounding_box.min.x < 0
+                    || bounding_box.min.y < 0
+                    || x as i32 + bounding_box.min.x >= image.width() as i32
+                    || y as i32 + bounding_box.min.y >= image.height() as i32 // TODO
+                {
+                    return;
+                }
+                let alpha_value = (coverage * 255.0) as u8;
+                if alpha_value == 0 {
+                    return;
+                }
                 image.put_pixel(
                     // Offset the position by the glyph bounding box
                     x + bounding_box.min.x as u32,
                     y + bounding_box.min.y as u32,
                     // Turn the coverage into an alpha value
-                    Rgba([color.0, color.1, color.2, (coverage * 255.0) as u8]),
+                    Rgba([color.0, color.1, color.2, alpha_value]),
                 )
             });
         }

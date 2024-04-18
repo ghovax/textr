@@ -49,6 +49,7 @@ pub(crate) fn capitalize_first_letter(string: String) -> String {
     }
 }
 
+#[cfg(test)]
 /// This function minimizes the first letter of a string, it is used for standardizing the error message.
 pub(crate) fn minimize_first_letter(string: String) -> String {
     let mut characters = string.chars();

@@ -499,6 +499,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand-utf8"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0f2017cdc22f0f49fc0385c036847c03403fa5f95bc36e7f420e8e42446e80f"
+dependencies = [
+ "rand",
+]
+
+[[package]]
 name = "rand_chacha"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -660,6 +669,7 @@ dependencies = [
  "itertools",
  "log",
  "rand",
+ "rand-utf8",
  "rayon",
  "rusttype",
  "serde",

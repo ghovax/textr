@@ -1,7 +1,0 @@
-{
-    "useDebugMode": true,
-    "logFilesFolder": "log",
-    "documentConfigurationsFolder": "document_configs",
-    "documentsFilesFolder": "documents",
-    "referenceImagesFolder": "reference_images"
-}
