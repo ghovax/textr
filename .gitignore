@@ -7,3 +7,4 @@
 !.vscode/*.code-snippets
 /firedbg
 **/.DS_Store
+fuzz/target_references

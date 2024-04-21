@@ -1,6 +1,6 @@
 use printpdf::{
-    pdf_document, Color, CustomPdfConformance, Image, ImageTransform, IndirectFontRef,
-    LinkAnnotation, Mm, OffsetDateTime, PdfConformance, PdfDocument, PdfDocumentReference, Rgb,
+    Color, Image, ImageTransform, IndirectFontRef, LinkAnnotation, Mm, OffsetDateTime,
+    PdfConformance, PdfDocument, PdfDocumentReference, Rgb,
 };
 use serde::{Deserialize, Serialize};
 use std::{io::Cursor, path::PathBuf};
@@ -188,11 +188,12 @@ macro_rules! add_external_font {
     ($fonts_map:ident, $pdf_document:ident, $path:expr, $key:expr) => {
         let font_raw_data = include_bytes!($path);
         let mut font_reader = std::io::Cursor::new(font_raw_data.as_ref());
-        let font = $pdf_document
-            .add_external_font_with_subsetting(&mut font_reader, true)
-            .map_err(|error| {
-                TraceableError::with_error(format!("Unable to add the font {:?} to the fonts map in the initialization of the program", $key), &error)
-            })?;
+        let font = $pdf_document.add_external_font_with_subsetting(&mut font_reader, true).map_err(|error| {
+            TraceableError::with_error(
+                format!("Unable to add the font {:?} to the fonts map in the initialization of the program", $key),
+                &error,
+            )
+        })?;
         $fonts_map.insert($key.to_string(), font);
     };
 }

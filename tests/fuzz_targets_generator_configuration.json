@@ -1,0 +1,55 @@
+{
+    "documentsToGenerate": 10,
+    "maximumNumberOfElements": 300,
+    "maximumStringLength": 120,
+    "fontSizeRange": [
+        5,
+        150
+    ],
+    "pageWidthRange": [
+        300,
+        702
+    ],
+    "pageHeightRange": [
+        300,
+        800
+    ],
+    "elementsPositionRange": [
+        100.0,
+        800.0
+    ],
+    "imagesDirectory": "images",
+    "includeImages": false,
+    "fontFamiliesToSampleFrom": [
+        "CMU Typewriter Text Bold",
+        "CMU Sans Serif BoldOblique",
+        "CMU Typewriter Text Variable Width Medium",
+        "CMU Typewriter Text Light",
+        "CMU Sans Serif Oblique",
+        "CMU Serif Upright Italic UprightItalic",
+        "CMU Serif Italic",
+        "CMU Serif Extra BoldSlanted",
+        "CMU Concrete Italic",
+        "CMU Serif BoldItalic",
+        "CMU Typewriter Text BoldItalic",
+        "Latin Modern Math Regular",
+        "CMU Bright SemiBold",
+        "CMU Serif Bold",
+        "CMU Serif Extra RomanSlanted",
+        "CMU Serif Roman",
+        "CMU Concrete Bold",
+        "CMU Typewriter Text Regular",
+        "CMU Sans Serif Bold",
+        "CMU Classical Serif Italic",
+        "CMU Sans Serif Medium",
+        "CMU Typewriter Text Variable Width Italic",
+        "CMU Typewriter Text Italic",
+        "CMU Bright SemiBoldOblique",
+        "CMU Bright Roman",
+        "CMU Typewriter Text LightOblique",
+        "CMU Bright Oblique",
+        "CMU Concrete Roman",
+        "CMU Sans Serif DemiCondensed",
+        "CMU Concrete BoldItalic"
+    ]
+}

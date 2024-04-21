@@ -1,0 +1,2753 @@
+{
+    "id": "bcf92c1c-0958-4196-b211-ca172518a5e5",
+    "title": "7lO8Le621wuC0V4j6q6ksljDG5HOIFqRHK6IPcHT4RaUMMWvUeDYSIqtJi2LdQ4bN5KtnwMX",
+    "author": "BfMyJSIoDk5aSPN9TM8MvdttNBUw1kPQyKnjw4xg5BgHRwajVNKeG7nWPTtYyBiKH8cIHnD0DpsxsdcAejB6",
+    "dateInUnixTimestamp": 141453708121,
+    "pageWidth": 580.75574,
+    "pageHeight": 742.45874,
+    "rawContents": [
+        {
+            "color": [
+                0.16687657,
+                0.07527626,
+                0.07067955
+            ],
+            "position": [
+                746.5753,
+                385.41025
+            ],
+            "text": "H0rfRQjJ3RVrrBLLd4Stln8PwZ9",
+            "fontSize": 145.0,
+            "fontFamily": "CMU Concrete Roman",
+            "url": "R7CoMkpX9lgSjJ2zPPsqCe7rj3sQJhHUyBoAEsJpnrbzYNjyVrZv",
+            "highlightArea": [
+                425.12543,
+                742.99316,
+                624.40497,
+                924.5134
+            ]
+        },
+        {
+            "color": [
+                0.28888944,
+                0.15146257,
+                0.6856919
+            ],
+            "position": [
+                111.52947,
+                510.10492
+            ],
+            "text": "50hbENFQVcRnUQAATM4xkQoCeUl0be4f7GYItLWohN9w2DD7WD7Uq67rVt2ivdJ21pHx",
+            "fontSize": 60.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": "xCme39AK9cS0nHxJ2ExBR",
+            "highlightArea": [
+                555.4623,
+                795.3678,
+                1324.053,
+                1012.563
+            ]
+        },
+        {
+            "color": [
+                0.30744794,
+                0.2778602,
+                0.8173032
+            ],
+            "position": [
+                598.302,
+                785.42017
+            ],
+            "text": "1Z9GlehgeiHmiliNKDRmPDmhFj7eihP1eGa4ZV8EB6qLyyi1YWTZD8ej9d1uQNVikpL3ExQW6wYmQhmDo8RMVYI1JHT2Gc",
+            "fontSize": 112.0,
+            "fontFamily": "CMU Concrete Italic",
+            "url": "QmOTbap2is7BNKkB0zwp5uLOOUPGw3r8PMv3K4dUqWgMX3r88pHgHhhvoXy3elLqNHrFR0",
+            "highlightArea": [
+                596.5393,
+                678.72217,
+                1126.4636,
+                951.9955
+            ]
+        },
+        {
+            "color": [
+                0.12404896,
+                0.37162045,
+                0.104134455
+            ],
+            "position": [
+                620.1775,
+                319.61917
+            ],
+            "text": "cHkTYNYGSLBgtKf093xtvegCt80wziAN96B4LaeiwNM",
+            "fontSize": 86.0,
+            "fontFamily": "CMU Bright Oblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.13478781,
+                0.37788767,
+                0.7563695
+            ],
+            "position": [
+                274.4399,
+                215.00755
+            ],
+            "text": "2GSW250dVfWdy9FS1m3a9BaZKqcucI8t68U3gTATMqp8x11mf82S7xNBC7r",
+            "fontSize": 29.0,
+            "fontFamily": "CMU Serif BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.88461864,
+                0.4384969,
+                0.19325319
+            ],
+            "position": [
+                620.3678,
+                426.27542
+            ],
+            "text": "JFLE8qxGOQfI5XCACtpQwq7xNKrp7hPmWCLbRUWHRdRN2C9aiz31vweujkCgLo1C0muVvWmiVyjqstyTWGMZbdVWKmwhQgg0ev8e4IX",
+            "fontSize": 53.0,
+            "fontFamily": "CMU Bright Oblique",
+            "url": "0XKJz1DNMZrsEClive59XBiLljSR36Kq9nZeCjX42xigavm225EGRGNzB3vxs8EIQoRIyi5AaZlF7SNcKXJ441R8Tya0p",
+            "highlightArea": [
+                115.41816,
+                201.05939,
+                520.3753,
+                354.8888
+            ]
+        },
+        {
+            "color": [
+                0.7186844,
+                0.99919486,
+                0.011701704
+            ],
+            "position": [
+                451.525,
+                637.46716
+            ],
+            "text": "LJy7vC9MNNOSCQNGpOzKidsdQKZLCtbpTNcxCxogIm5FoPZK",
+            "fontSize": 48.0,
+            "fontFamily": "CMU Classical Serif Italic",
+            "url": "9z",
+            "highlightArea": [
+                350.9622,
+                440.20447,
+                1112.3444,
+                1133.0359
+            ]
+        },
+        {
+            "color": [
+                0.9953587,
+                0.65525013,
+                0.85687506
+            ],
+            "position": [
+                524.15076,
+                351.15228
+            ],
+            "text": "q5CEdUDhnyjY5mW3VItr0lwXzLYCvbwzJnPpxTZLTINoNARjrM0x8fbXsc5vaYgrftCsIjVj2z5iOtuBhbHokVuerkpnSjp7sf",
+            "fontSize": 99.0,
+            "fontFamily": "CMU Serif Bold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.82404995,
+                0.8554174,
+                0.81978536
+            ],
+            "position": [
+                657.80817,
+                575.8782
+            ],
+            "text": "4ewSA3rgeD3KxlWMFHT4CQfDhdnsEQKXvwrObyyMVRKzRutuP",
+            "fontSize": 106.0,
+            "fontFamily": "CMU Typewriter Text Italic",
+            "url": "I88FCqCPusapc4nRKTnZJxOYjxonqNMqy0i8YG9koLYT7cyBFPLcVihPrGwOZqhBMCA5Y8scKbboVrg7YH1bSGfcf88K4Cq",
+            "highlightArea": [
+                247.8808,
+                714.9896,
+                591.8671,
+                1062.6404
+            ]
+        },
+        {
+            "color": [
+                0.91211355,
+                0.87852764,
+                0.70040494
+            ],
+            "position": [
+                633.1135,
+                402.14127
+            ],
+            "text": "3oIo0RS9yf98kh4J0BBZSfJqORLPAMIcqPXjKj7rkpnJn3j0CoHuqQIAfTPPK8Q2EbOAHJ5Euv9Fwbzj8b6Ae6tOgblvSPv5T7DOZ2WjKDV6C",
+            "fontSize": 145.0,
+            "fontFamily": "CMU Typewriter Text LightOblique",
+            "url": "Qu27253Y",
+            "highlightArea": [
+                192.5441,
+                464.93408,
+                763.6709,
+                840.1293
+            ]
+        },
+        {
+            "color": [
+                0.5958422,
+                0.3368322,
+                0.30412117
+            ],
+            "position": [
+                504.18314,
+                223.95718
+            ],
+            "text": "5JC6lCef2DXDlXhzY8sRgYuumObofeeBKhKsXCyaMXqK3L9XxmfOmJt2UGevUZbPPuaF7jcwyUK1pg",
+            "fontSize": 26.0,
+            "fontFamily": "CMU Sans Serif Medium",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.34960106,
+                0.7506678,
+                0.45494646
+            ],
+            "position": [
+                536.1914,
+                686.6381
+            ],
+            "text": "35nhuyi8",
+            "fontSize": 16.0,
+            "fontFamily": "CMU Bright SemiBoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.74968654,
+                0.34753397,
+                0.692534
+            ],
+            "position": [
+                385.44296,
+                553.6361
+            ],
+            "text": "Uzvzg9jJNKNjxPuOXNBLTqwnugS9aLn",
+            "fontSize": 118.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": "C4ezwMekAVJpLhA8zMUV7iWntucyZ75qOoKVccy6xZsEPOREoIG13m0S0x7JGVeeZRMLWvniBaGNr8XcHR8XlfID8vedciTxT1Ds8FogrCJyLru4c",
+            "highlightArea": [
+                144.78775,
+                307.0538,
+                837.6958,
+                774.6055
+            ]
+        },
+        {
+            "color": [
+                0.52296203,
+                0.48991865,
+                0.077201135
+            ],
+            "position": [
+                334.1195,
+                422.7559
+            ],
+            "text": "3V9VaCacdtVQTmpLQuE4KRHN58ZOmaHGMMwSBOAnPqLqCy79UL2urk3XlUuhh9NseVuFMzP37iqQOkP523qZUDEham7bthDEEbHTo3bvb",
+            "fontSize": 138.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.23835889,
+                0.07274128,
+                0.7468645
+            ],
+            "position": [
+                225.63739,
+                690.3335
+            ],
+            "text": "ZSVXCYGjuvP3kQzE4TdmiFrk2VonVsR97oLdWoIz9Z6ak4VqweEtIDUnMFk1iZwWUx02w6R5xGFxcz4",
+            "fontSize": 127.0,
+            "fontFamily": "CMU Serif Upright Italic UprightItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.10117449,
+                0.023985628,
+                0.8552202
+            ],
+            "position": [
+                160.3788,
+                462.37772
+            ],
+            "text": "OKbAhQXJzAmPQPJ6eFWYacYVh7CNkeVR09OoxCSPVg3UtVjjtzh4JyLc5H",
+            "fontSize": 125.0,
+            "fontFamily": "CMU Serif Italic",
+            "url": "5pAgzXKodU5dgOfg25TiMG",
+            "highlightArea": [
+                789.0804,
+                224.5354,
+                1296.429,
+                978.7765
+            ]
+        },
+        {
+            "color": [
+                0.25987592,
+                0.11971976,
+                0.78577876
+            ],
+            "position": [
+                327.9433,
+                577.65314
+            ],
+            "text": "ZPL0Ks1u5kcXYGOlMG8C1dbmJyKqWrCacjk",
+            "fontSize": 80.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.40466827,
+                0.7342388,
+                0.7199916
+            ],
+            "position": [
+                702.11957,
+                207.19087
+            ],
+            "text": "QiDpmppvb7wGfgFGuGwnM1MVNifQKc1yqELeoeZn0KY",
+            "fontSize": 127.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.5862008,
+                0.759246,
+                0.0066974172
+            ],
+            "position": [
+                390.6913,
+                393.8243
+            ],
+            "text": "rNed9E8e6ugleOQPSdFIQfOQZQy4Zm7H8kN9Ew0dq5i6hJRmQT1WJaDMZWqQx1YDobsUPjjGJhDKM7wYTCxy1NWUtz0LjevuZiSRFBeTtPLCvflivFqOVE5",
+            "fontSize": 16.0,
+            "fontFamily": "CMU Classical Serif Italic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.46836454,
+                0.2333503,
+                0.70841676
+            ],
+            "position": [
+                156.3198,
+                488.2139
+            ],
+            "text": "0HbWJUqB56ZjVul8KLOj5w9SYidIqKJjqY2sntWClVNkOQ",
+            "fontSize": 109.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": "4fCp7SpBkAtVdsBeLdAa7LuiPY90Rs9mXTnb5Slzjreo4ypYroSKs",
+            "highlightArea": [
+                585.55554,
+                711.6357,
+                793.1078,
+                1294.7494
+            ]
+        },
+        {
+            "color": [
+                0.88122165,
+                0.7329169,
+                0.9132824
+            ],
+            "position": [
+                519.9901,
+                255.14975
+            ],
+            "text": "ik4lOvK3MuBDkAUHbLGoqxeBDlCGD8K0k8nYy2HHwnSxnsWcYwiOudFrrYGbXFqnDWbhdpVmYwDbQycqjNXwxpFBxDnM",
+            "fontSize": 110.0,
+            "fontFamily": "CMU Concrete Bold",
+            "url": "pjqaBCjkM0tDKPvfkI8KQHq1tF91JQqJz7mCmcjaL53X",
+            "highlightArea": [
+                487.121,
+                391.59613,
+                1015.2108,
+                595.60583
+            ]
+        },
+        {
+            "color": [
+                0.5120403,
+                0.054912932,
+                0.02110994
+            ],
+            "position": [
+                435.9795,
+                406.08368
+            ],
+            "text": "hzov",
+            "fontSize": 134.0,
+            "fontFamily": "CMU Bright Oblique",
+            "url": "QO2rDPXeMayy4ofLHc7IpoIS9pXVNhJHwMHud2kwwsbvbVahFIdIeQx4gZ7pfArfsSEZkqQ7a2m1HRsjgpbi6u9NQCV67bz3R",
+            "highlightArea": [
+                484.51556,
+                484.6444,
+                691.0486,
+                841.8202
+            ]
+        },
+        {
+            "color": [
+                0.61819047,
+                0.20862284,
+                0.027741436
+            ],
+            "position": [
+                314.6874,
+                250.76263
+            ],
+            "text": "CqcVdOW9iJRJ7OZmNIVQvq0dxR0SI45Rgw9U6IllZqpyXjrtJYEth7e7fIXm302q13FmOivXq9yrcJDlhzX",
+            "fontSize": 100.0,
+            "fontFamily": "CMU Bright SemiBold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.4739837,
+                0.28937545,
+                0.86654997
+            ],
+            "position": [
+                232.62762,
+                382.27332
+            ],
+            "text": "oMoVq6qjhExdbiEyshF6F3reDze5gPU3vsZVLOs6MPVswXEf",
+            "fontSize": 66.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": "Wnrg3e74fhiKRWSyJzZW4PYqR9TrnTonUyf0DgATT5Wgy7bef1wjHmvmOJfEYV7KStvdE9X4OrsFcdenPkuGkZajUq5McUfIrLjfeNc4N3",
+            "highlightArea": [
+                732.33826,
+                381.37268,
+                966.9571,
+                566.2764
+            ]
+        },
+        {
+            "color": [
+                0.9238621,
+                0.35699013,
+                0.5103759
+            ],
+            "position": [
+                252.7858,
+                429.9403
+            ],
+            "text": "ZdcKiXVhIcWwOCMDI8pjVyTwtSAzBTXUPtCTWG2sKbQGZnzQUnH1FuAyypnMVrW2sPPGvevOjHWPFbjlI",
+            "fontSize": 97.0,
+            "fontFamily": "CMU Sans Serif Oblique",
+            "url": "nUKtTRbAq6PN7wuxSKPj0iOg1i7X1jWqLS4ZHG94J7tHSa9laIllRBQHI3h",
+            "highlightArea": [
+                728.5931,
+                163.57872,
+                1209.8003,
+                904.68634
+            ]
+        },
+        {
+            "color": [
+                0.20895174,
+                0.6557941,
+                0.2996675
+            ],
+            "position": [
+                667.107,
+                494.8283
+            ],
+            "text": "gUdMQBh",
+            "fontSize": 79.0,
+            "fontFamily": "CMU Serif Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.92398643,
+                0.36589935,
+                0.779572
+            ],
+            "position": [
+                262.20563,
+                283.42358
+            ],
+            "text": "0RQvSWkTdvFSRz5a6vdHQIMi0AGB7tEDPLfMpHeaTtMN4JcVnAWxeupNblKvUrBToUGut0i5WDuJ",
+            "fontSize": 75.0,
+            "fontFamily": "CMU Serif Extra RomanSlanted",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.7054489,
+                0.7942337,
+                0.30446342
+            ],
+            "position": [
+                500.69415,
+                423.60196
+            ],
+            "text": "8Yee9YYEALYzlgI5qc8f6OY1DgkBTKxyyJTcA1fyoLG9zTumD",
+            "fontSize": 64.0,
+            "fontFamily": "CMU Serif Bold",
+            "url": "GVQmbyh3uZ7aHOGCGiC6budRt",
+            "highlightArea": [
+                676.6387,
+                726.3183,
+                999.6897,
+                1155.2115
+            ]
+        },
+        {
+            "color": [
+                0.97618663,
+                0.39560586,
+                0.94912577
+            ],
+            "position": [
+                179.23679,
+                304.47205
+            ],
+            "text": "lvIi",
+            "fontSize": 101.0,
+            "fontFamily": "CMU Serif Extra BoldSlanted",
+            "url": "SOFxdgZiehr2Y072kFshmsfEZxwxlyZmUyNykOzR2D6F3B3TxPOJAXWS9AuWpUMb8n9C16RUcw0OaLiz6xwdY",
+            "highlightArea": [
+                465.97833,
+                553.3998,
+                1014.3472,
+                928.5431
+            ]
+        },
+        {
+            "color": [
+                0.106465116,
+                0.08467854,
+                0.6844631
+            ],
+            "position": [
+                267.2989,
+                717.2781
+            ],
+            "text": "Kfo3M8aYJCpr1AH7LkApPyJjP",
+            "fontSize": 49.0,
+            "fontFamily": "CMU Typewriter Text Bold",
+            "url": "0y9xuRpmyInYwiptgRKv5o",
+            "highlightArea": [
+                397.16986,
+                777.6966,
+                710.432,
+                1241.0267
+            ]
+        },
+        {
+            "color": [
+                0.47027713,
+                0.9494376,
+                0.74197644
+            ],
+            "position": [
+                461.60806,
+                757.3436
+            ],
+            "text": "GRKN4O8esbMfsM1V7oqvSd2jV9eFzLc4FYT8PANZMEXHxO3zkB3MKWS0VEWE1T",
+            "fontSize": 72.0,
+            "fontFamily": "CMU Classical Serif Italic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.79636836,
+                0.60008043,
+                0.09377755
+            ],
+            "position": [
+                663.54126,
+                177.62244
+            ],
+            "text": "vfXII1rsIqY1p2ivaD4BSRBPWUnyy3bxWDock7yfeF8wF4UdxcuSpSh9AUl",
+            "fontSize": 139.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": "uaZT8ssIPR7CrvcgsOxQqfGRoDzZh7bny38y5N6D5WiTv2SicqNZh4JLoRAOJvbq6fy71P",
+            "highlightArea": [
+                350.02173,
+                563.52563,
+                687.5531,
+                850.482
+            ]
+        },
+        {
+            "color": [
+                0.8334663,
+                0.34793285,
+                0.94564104
+            ],
+            "position": [
+                208.25899,
+                660.09076
+            ],
+            "text": "Fg4azw9Uicwftn9bNLQD",
+            "fontSize": 110.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": "eZVrHyPbCVmkl99VUAeijZ6qmhqVubnWFK5ITU21wtB8R0qKYj6biqYvfmVRhRxJ6ctsn6jBSNFSJsjSR",
+            "highlightArea": [
+                646.4568,
+                468.32678,
+                1129.8732,
+                1038.2258
+            ]
+        },
+        {
+            "color": [
+                0.41837543,
+                0.31823328,
+                0.730712
+            ],
+            "position": [
+                460.95087,
+                121.768936
+            ],
+            "text": "BTTKL4tDePLsx8pU00zDKP",
+            "fontSize": 19.0,
+            "fontFamily": "CMU Serif Extra RomanSlanted",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.14522363,
+                0.80861425,
+                0.17453338
+            ],
+            "position": [
+                312.27148,
+                667.9483
+            ],
+            "text": "nX5ZgyR0pb59nCgrL18uxDBNfq7WkTy1SNqdyoUC7BMbZJnfHYNGptwL1kAN4UfiO28mDbzUnazZu31fP1glbAa1h0rtHIf1Y6PT",
+            "fontSize": 98.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.76737666,
+                0.8044956,
+                0.5559544
+            ],
+            "position": [
+                320.69153,
+                123.88673
+            ],
+            "text": "N5f7o9ejykmE6CQ9uf9aNZiXUr2X7Z",
+            "fontSize": 128.0,
+            "fontFamily": "Latin Modern Math Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.194186,
+                0.7241486,
+                0.05801571
+            ],
+            "position": [
+                178.12228,
+                444.89566
+            ],
+            "text": "zYt2IIxmd2lCfz1hwy4yEIIcPV8nKYQ8ShbTXjCUKLYyL5ucgfY4Ks09fL1I6R0fOJzVh8z5X3NbrkVWBntfTnGiCatvFWKNnoWf",
+            "fontSize": 25.0,
+            "fontFamily": "CMU Sans Serif Oblique",
+            "url": "Y9AYql",
+            "highlightArea": [
+                480.12018,
+                619.6212,
+                645.08215,
+                842.4361
+            ]
+        },
+        {
+            "color": [
+                0.5470633,
+                0.13798107,
+                0.1039765
+            ],
+            "position": [
+                580.8153,
+                185.59859
+            ],
+            "text": "9iHlcs7U1bd1Ry0D9YvDRR5O1T32p6tF0gWuSHxwbD3LeRiRNLR0AylLvtLFI",
+            "fontSize": 48.0,
+            "fontFamily": "CMU Concrete Roman",
+            "url": "WrzJDfxw",
+            "highlightArea": [
+                539.8335,
+                244.77727,
+                1055.2075,
+                578.17914
+            ]
+        },
+        {
+            "color": [
+                0.44945246,
+                0.36768296,
+                0.25905922
+            ],
+            "position": [
+                274.2478,
+                527.67224
+            ],
+            "text": "YUtwx9D1hKHLCkvN9m0paCvSYNOb31tYhu6r77iyQAliQNpPtx12ygbF3AZV1IQK1hQCwl0EVai0kaRjvDrcdCV35n",
+            "fontSize": 23.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.5262714,
+                0.5251638,
+                0.21299103
+            ],
+            "position": [
+                249.32068,
+                595.9854
+            ],
+            "text": "ZIdA5fsCp3WCfK4ZZCVqcvadgqggrsU",
+            "fontSize": 141.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.96112025,
+                0.060986765,
+                0.25642505
+            ],
+            "position": [
+                626.0127,
+                770.35547
+            ],
+            "text": "EVEWqlVg2vzt1t74ilyTo5oZ1tWdUEJv8i7JHVvO8K6pTwRGKoqinprKR6wAV1xesUuEwLNC09sIfh4sCKbLV7nkvvzyn",
+            "fontSize": 91.0,
+            "fontFamily": "CMU Serif BoldItalic",
+            "url": "ekQuNIwOqbqsW6ysrIvcbTTm2uh0IuQUK0AhhDRWwmr74zqaIcI8rh11PBgsv87ab6FEKd1u9xjqhyrwH",
+            "highlightArea": [
+                623.9768,
+                614.3334,
+                1220.2749,
+                954.73413
+            ]
+        },
+        {
+            "color": [
+                0.6885393,
+                0.70587105,
+                0.92217815
+            ],
+            "position": [
+                731.619,
+                531.90356
+            ],
+            "text": "fURBhBXYEys0PLZub1SNGehjt9e1jfv4mSHtSu4OPBGT32lg4kz1LcDxup0GLkSatFUsYBkoU3Z71H",
+            "fontSize": 83.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.38072044,
+                0.72367054,
+                0.026646737
+            ],
+            "position": [
+                576.3935,
+                334.96014
+            ],
+            "text": "7sfqjwCVH4XohKzOLvn4XOuuElz2OpN0Cq",
+            "fontSize": 62.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": "BKgMvV6WV58L4bVVfiz80Lj260CkoeCyaZT189",
+            "highlightArea": [
+                436.99762,
+                138.51299,
+                618.4695,
+                829.53827
+            ]
+        },
+        {
+            "color": [
+                0.11739232,
+                0.17499603,
+                0.4021818
+            ],
+            "position": [
+                554.00793,
+                446.86
+            ],
+            "text": "MD14W9Wc25m7L7Z1dRGzwAfU3cR1R2KIkfZIdd9u9rBexp7H84hIxhAEMqzoR9BYcgBYmCTrj4vJzI3g43V19RnrtNxUqKov94MlkMnbZam",
+            "fontSize": 7.0,
+            "fontFamily": "CMU Concrete Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.60589725,
+                0.4961117,
+                0.41697377
+            ],
+            "position": [
+                211.12337,
+                408.35202
+            ],
+            "text": "QINaPoT0iKHyb8Cz62YwOWVHnyYXvTG4gngIlHo",
+            "fontSize": 144.0,
+            "fontFamily": "CMU Serif Italic",
+            "url": "u3PPCmTJBs",
+            "highlightArea": [
+                776.83,
+                545.11096,
+                1271.8276,
+                1020.22
+            ]
+        },
+        {
+            "color": [
+                0.6481572,
+                0.30417255,
+                0.7543844
+            ],
+            "position": [
+                628.9497,
+                586.8467
+            ],
+            "text": "muvfmf6rCcO5vkWzd3rLshFuCbZuBPDYKCdKGITX17hPBtGlmCAeqXs4LS6ycEKd",
+            "fontSize": 103.0,
+            "fontFamily": "CMU Sans Serif Medium",
+            "url": "WJUkh798WpHuefJu8eL0uGDtzllk7t1y4rZBXrynouzGhIY7guXbvumCjbUHIAcdDuYYQSbxi1JlGrgX9N8PsC2w3LKf4phq5S3xHOKz98eGbNWi7Df8SU",
+            "highlightArea": [
+                107.21921,
+                234.24373,
+                655.2522,
+                433.7489
+            ]
+        },
+        {
+            "color": [
+                0.15645446,
+                0.7307963,
+                0.37967318
+            ],
+            "position": [
+                114.76335,
+                786.75586
+            ],
+            "text": "JNp9baQBsRW9FFJlmWXl",
+            "fontSize": 138.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.80234087,
+                0.24234036,
+                0.30497637
+            ],
+            "position": [
+                296.18866,
+                308.9151
+            ],
+            "text": "EXEd64WVql2sMiBT8dOVAP5YY6KU91Cm3w",
+            "fontSize": 18.0,
+            "fontFamily": "CMU Serif Italic",
+            "url": "yTkePUbZkdnkgQYC8An4rXxT9wez0Fng",
+            "highlightArea": [
+                244.50615,
+                370.6241,
+                872.94714,
+                578.18066
+            ]
+        },
+        {
+            "color": [
+                0.4280972,
+                0.720614,
+                0.55182713
+            ],
+            "position": [
+                602.5786,
+                677.02997
+            ],
+            "text": "z6WvNyXsTtNXc66WGVnTzwkzs2ST8Aqv8dbXDtt8",
+            "fontSize": 122.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": "tnOBsFK9UIthYcwbu0QbYZ",
+            "highlightArea": [
+                264.35464,
+                687.5672,
+                626.24347,
+                1420.4763
+            ]
+        },
+        {
+            "color": [
+                0.15629722,
+                0.15656938,
+                0.3231826
+            ],
+            "position": [
+                110.027435,
+                679.31683
+            ],
+            "text": "f3H1eOV6VJz8saoz5MQ6Qf45EqebMcb",
+            "fontSize": 76.0,
+            "fontFamily": "CMU Bright SemiBoldOblique",
+            "url": "tbwxej48DqeYNRj9tbmcLBAMYluJ7egyt0POw0bBqJzTqhY3FO7mwG7Gs",
+            "highlightArea": [
+                272.84735,
+                251.99313,
+                510.08588,
+                586.749
+            ]
+        },
+        {
+            "color": [
+                0.97750497,
+                0.2895184,
+                0.44376558
+            ],
+            "position": [
+                207.26205,
+                306.33383
+            ],
+            "text": "P3mH8KB",
+            "fontSize": 74.0,
+            "fontFamily": "CMU Serif Bold",
+            "url": "mN93iB4lKLj3VqSkNxIQ3f4k9xooyeCOSp9BkxegN9oEvOqXWBkb3om4EoueXdI2ffrbxCk3AjqUTx5HYSn7TeAZvR5CEua9yv3lrLhk6O1ILZs",
+            "highlightArea": [
+                322.24347,
+                362.02637,
+                934.4591,
+                504.65192
+            ]
+        },
+        {
+            "color": [
+                0.9155052,
+                0.39586288,
+                0.5891883
+            ],
+            "position": [
+                562.8639,
+                767.5693
+            ],
+            "text": "y5GA6",
+            "fontSize": 42.0,
+            "fontFamily": "CMU Concrete BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.8611307,
+                0.41624314,
+                0.47315007
+            ],
+            "position": [
+                693.6093,
+                490.83722
+            ],
+            "text": "V7f0e1PEPrZTQ27oDCzTAU7JPeJsCyoMhmxyCpfi5ed",
+            "fontSize": 113.0,
+            "fontFamily": "CMU Serif Roman",
+            "url": "VHBryUnB2Uy4HAgtJy4kDk4JZxWoFzRpeP80FJFVCiNq0iA6O17TktyuJMbvzBs2bZWR1MeXMUdgYwGldEhwx6ZwbNM8DwxkNb5U",
+            "highlightArea": [
+                125.85356,
+                530.05707,
+                630.18524,
+                1271.2494
+            ]
+        },
+        {
+            "color": [
+                0.7887081,
+                0.63446754,
+                0.115803614
+            ],
+            "position": [
+                427.43115,
+                387.09653
+            ],
+            "text": "3DbBNtVrbKbLVEVfnVVxcpGf1",
+            "fontSize": 107.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.505657,
+                0.21590176,
+                0.8584647
+            ],
+            "position": [
+                250.06635,
+                599.64844
+            ],
+            "text": "6hzmC2RU323gTa0fZIgAMMtJLlrhLOF5OvOwFh3AFlz0whpkKMvhkv4oaadHCPbubTMH4rrxozVmz1N6EWzLYoi4CCxdxlE08P4AYFBoU",
+            "fontSize": 27.0,
+            "fontFamily": "CMU Sans Serif BoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.9254321,
+                0.120015755,
+                0.17223169
+            ],
+            "position": [
+                608.37976,
+                193.22351
+            ],
+            "text": "EMwgina2sa36IiqxIPivXPpZaqIZKTtrAPSvqKVxHoSD3f8ZahWjUe72pX2OHKB",
+            "fontSize": 22.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": "OhZql1NuMT5L2EaIdgwyA7TAjTIdisX9QcXzhwj5fZF98piJo7ugeMBsZIqo16rs9e9QfeEIrCFgXEJzn6fqNXeqvm7I0uOnj2",
+            "highlightArea": [
+                204.15976,
+                143.15227,
+                711.886,
+                929.1405
+            ]
+        },
+        {
+            "color": [
+                0.023454074,
+                0.30428126,
+                0.24271432
+            ],
+            "position": [
+                562.5564,
+                369.49866
+            ],
+            "text": "IffGPTATurX02tPOGWNMqyRnf3bFXR9f1fQYqZTzfMm6yEcWxENZgEmzEY7y1RupPDbtd",
+            "fontSize": 145.0,
+            "fontFamily": "CMU Classical Serif Italic",
+            "url": "4NTtNiAHXmOYbHvnj33l1sIz9awkvq2WGxew2cT8jkqyocAUgYSmZ1kxFkxZLxkJcGDGGsgH8wo0dmdjRjJDJZvYOkKJOmMtTd7X4dmvWAxADLY",
+            "highlightArea": [
+                346.7171,
+                194.7677,
+                580.2302,
+                459.90308
+            ]
+        },
+        {
+            "color": [
+                0.5608924,
+                0.31416634,
+                0.5906165
+            ],
+            "position": [
+                219.53946,
+                421.87445
+            ],
+            "text": "SEZqINLicPN6pqKqBvxennua6GXvtU0DeXlAUfD0gawsg1cnL76pJe8zsT7VcIy5nyVqxLhfi4JG0lWOgMBsCarPbyJPEp",
+            "fontSize": 64.0,
+            "fontFamily": "CMU Bright SemiBold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.43412334,
+                0.63425976,
+                0.7611761
+            ],
+            "position": [
+                609.2769,
+                652.0421
+            ],
+            "text": "218Pc6xB1DeNHD8V42Ib0XbW6cvYiLtAoCDfd5C7VOWUqnpu7fUgCLb",
+            "fontSize": 56.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": "sXkYvmMlSFK2a7ciNW1VXTbyFNo6EEQ7BBGMO",
+            "highlightArea": [
+                615.6653,
+                446.31293,
+                1125.1962,
+                595.3976
+            ]
+        },
+        {
+            "color": [
+                0.0827818,
+                0.93991876,
+                0.5140254
+            ],
+            "position": [
+                604.87317,
+                716.3061
+            ],
+            "text": "WKbyBlYokaCfX0OoLiGOb0",
+            "fontSize": 145.0,
+            "fontFamily": "CMU Typewriter Text Light",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.4343353,
+                0.21140245,
+                0.92253995
+            ],
+            "position": [
+                711.34125,
+                117.05663
+            ],
+            "text": "UHuhx1yuJ8vKLe5w1Ow0H62m6hRwxwpLVgZTgkjkViTj77gxxB2qjGf5XQDcAtYGVZ6RnHSJozwFtbIuBE0plwjWtuJdQMND3bez",
+            "fontSize": 57.0,
+            "fontFamily": "CMU Concrete Roman",
+            "url": "gU8hjwQYN8q3UNnIpVmlw9iUEFVw0GGPoLDkVN0hRay2y6JCDqqf",
+            "highlightArea": [
+                261.79025,
+                119.48459,
+                611.3163,
+                702.31836
+            ]
+        },
+        {
+            "color": [
+                0.7712786,
+                0.3361533,
+                0.6472369
+            ],
+            "position": [
+                508.63712,
+                123.188034
+            ],
+            "text": "cbagpfoUfn76FfbI8Q7ioeljv2rbbd6ekElc39fQXHGbzUG2r4fm5XRcLQ0qs6N6D6a",
+            "fontSize": 143.0,
+            "fontFamily": "CMU Bright SemiBoldOblique",
+            "url": "KJwJyPA",
+            "highlightArea": [
+                799.28125,
+                468.93826,
+                1358.8281,
+                618.77277
+            ]
+        },
+        {
+            "color": [
+                0.20047691,
+                0.284529,
+                0.18006898
+            ],
+            "position": [
+                406.06567,
+                445.41486
+            ],
+            "text": "fbt9poY8WIRTrjPGjN7Ut1KYsQEixzz3p0iJniR01iCuwgkBWB4xqDA4EDitay4UhZBRFSAe6m6t6rcJSfvZwhEQEBoQVZSG2CcTuTVFVdenlGbyQuIbYxp",
+            "fontSize": 22.0,
+            "fontFamily": "CMU Bright SemiBoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.09024478,
+                0.07838679,
+                0.7046867
+            ],
+            "position": [
+                277.49246,
+                548.3401
+            ],
+            "text": "113auZcZETv1rKXKsKDTFyFVg9PneZFfcWrRdElag0ojl5tu2ktkNYp2X3X7S4409DaIPSMVbiUEg",
+            "fontSize": 10.0,
+            "fontFamily": "CMU Sans Serif Oblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.7658248,
+                0.5082758,
+                0.43732423
+            ],
+            "position": [
+                525.4072,
+                789.4906
+            ],
+            "text": "9RHQqiPgZACjnxlc6ZoFRozf6bILCOHlgCBfuTki4fNRBj0gFPIKiSw6jhwrHAUyXdTiL8",
+            "fontSize": 57.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": "cJoJLcN7WGGUmectQG0jTnjDgmaKlhmT5Sqws1E6LfSX7penl9wkQC9GoBihmgsKGzsfdAt9oLvaJuh8qulIzE9",
+            "highlightArea": [
+                721.26245,
+                268.84482,
+                822.3954,
+                437.6387
+            ]
+        },
+        {
+            "color": [
+                0.47979194,
+                0.3235803,
+                0.9478282
+            ],
+            "position": [
+                226.72595,
+                474.52283
+            ],
+            "text": "bfLI5FX2KQoeBmFTbldDV1mvDGVrWkzIEz0V5X4YsvevEseW2ANZqPAHICjSZgDaIKdPDR3Y6Qffk42jNwtnFKsbEP6yLTe6lU2OKPupCCQJzBxw3",
+            "fontSize": 62.0,
+            "fontFamily": "CMU Sans Serif Bold",
+            "url": "nML9MTwrXqdibAz28J",
+            "highlightArea": [
+                214.46916,
+                656.0946,
+                875.5444,
+                1193.1396
+            ]
+        },
+        {
+            "color": [
+                0.05446423,
+                0.22428861,
+                0.43950397
+            ],
+            "position": [
+                672.94995,
+                785.72437
+            ],
+            "text": "WFU4PYPKyg1ukR2vSq1mm3bbA37BdolQRtODKx5YrgrDNWvElxI4RRfIvzDFaWNdwAuaTdytaoTWssJ3SCOG9G6BBAYrXcpT45XyDuezRUPRQWOZBY9",
+            "fontSize": 126.0,
+            "fontFamily": "CMU Concrete BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.6495765,
+                0.82807577,
+                0.63033646
+            ],
+            "position": [
+                434.21426,
+                786.7308
+            ],
+            "text": "WM1803y5J9MjmaeWUmeThejmiFln5K9JtFkf3RKBAgGqT1qAmDqEu1wcTIz0Zos6t6c4gPDWVkYygIN0iFvjaHYjMnobcefxff5HBK5dX2r",
+            "fontSize": 80.0,
+            "fontFamily": "CMU Sans Serif Medium",
+            "url": "BvlwNBCTvOSrwhfGWpBLgyhln2CZxLS",
+            "highlightArea": [
+                445.2998,
+                160.65076,
+                986.3286,
+                831.0363
+            ]
+        },
+        {
+            "color": [
+                0.81196487,
+                0.29854682,
+                0.38392
+            ],
+            "position": [
+                737.0162,
+                243.1795
+            ],
+            "text": "9V1Mipz416VY61cs9Ee3GbIqPZZxdCz0iKNolIH7PN1HdLzkNqSJbZ8WyfWOQck1edVPNhB8ZCAwA0CchNnZTYGL0crKt9sW30",
+            "fontSize": 55.0,
+            "fontFamily": "CMU Typewriter Text Bold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.018627884,
+                0.10179199,
+                0.7287404
+            ],
+            "position": [
+                254.0047,
+                700.9509
+            ],
+            "text": "TQ52tC1RR468vFymvDYP10SEmtF1T",
+            "fontSize": 26.0,
+            "fontFamily": "CMU Concrete Bold",
+            "url": "PtLHskNr9tdJJNZoaaVv",
+            "highlightArea": [
+                750.3753,
+                421.7956,
+                1013.25354,
+                955.7354
+            ]
+        },
+        {
+            "color": [
+                0.6072671,
+                0.12851001,
+                0.16004719
+            ],
+            "position": [
+                122.1351,
+                178.12137
+            ],
+            "text": "9DvNtHln",
+            "fontSize": 118.0,
+            "fontFamily": "CMU Serif Italic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.0829022,
+                0.85661256,
+                0.31198433
+            ],
+            "position": [
+                231.6694,
+                605.14526
+            ],
+            "text": "dRKEp510uPzLY3tYemnMOy6FZmBL1X1eoH4rux9Ckfvmyk2wtAGX8gafyGgWBD2JU0I",
+            "fontSize": 135.0,
+            "fontFamily": "CMU Typewriter Text LightOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.19753745,
+                0.49047035,
+                0.48888546
+            ],
+            "position": [
+                543.2189,
+                773.1857
+            ],
+            "text": "x1XSSQTQMOcaRabKaiy7uSFdQYsJDqx3lctJ4njeQzz6VAxYtLg7Awe0cqvNAzw",
+            "fontSize": 89.0,
+            "fontFamily": "CMU Sans Serif BoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.88018715,
+                0.9081452,
+                0.43342966
+            ],
+            "position": [
+                287.8742,
+                494.75577
+            ],
+            "text": "dtP14g0U5r62QhUbIY3cJmRNg472JoFR38goDTiU0vqEGgrPv3raj23hxAp5KdqJyr0cJT2grVBHNrlf5wnhOJH0y6fXxD",
+            "fontSize": 76.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": "J9gsBMfhkUDa8aNgq5zLk5FCKiTVqC7X332oB5j5c7CcRcZAs5gcGDYbzlMKjy",
+            "highlightArea": [
+                444.58258,
+                350.27344,
+                921.82983,
+                771.2865
+            ]
+        },
+        {
+            "color": [
+                0.103281274,
+                0.8456644,
+                0.46376914
+            ],
+            "position": [
+                446.8046,
+                662.64215
+            ],
+            "text": "h1p1VKMdBZeD2Em55hioFz7DwQr7B",
+            "fontSize": 149.0,
+            "fontFamily": "CMU Serif Upright Italic UprightItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.71104485,
+                0.33370927,
+                0.22034553
+            ],
+            "position": [
+                434.59128,
+                403.06467
+            ],
+            "text": "jfQMamQDLEqsklUN4eNDu3TrGww3MBBUHdlMf0TMslLfyk40eXPtswHg3TZneV5LXtopL8",
+            "fontSize": 80.0,
+            "fontFamily": "CMU Concrete Bold",
+            "url": "JfoMNv5Kmj02xvapCLzA4UkFx0V0TlaAqYslBaCC0WPlg0i",
+            "highlightArea": [
+                624.7318,
+                776.66956,
+                859.40814,
+                1059.9961
+            ]
+        },
+        {
+            "color": [
+                0.48698682,
+                0.39703542,
+                0.40062815
+            ],
+            "position": [
+                220.32693,
+                737.6178
+            ],
+            "text": "joTKBvge9Wz09nF1",
+            "fontSize": 52.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.4276901,
+                0.9019166,
+                0.2002236
+            ],
+            "position": [
+                430.6137,
+                432.9396
+            ],
+            "text": "xMibS9xlPCQkfsINZYB7Bs8Bk808vspr6TuV77P7SNh9AQdjJZOCZIq4YX4YvW0rmscLIPKjON",
+            "fontSize": 70.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.4233114,
+                0.32958344,
+                0.47374874
+            ],
+            "position": [
+                584.76276,
+                772.475
+            ],
+            "text": "COdz8bq3zevRwMuNcqqouP6BfR2wlPJVTrMdmUfcizoJNBHoWYwJh5tSalqHw4YTHzbN1lqomDVFhbqTIhhqX72GLg2UDSwldt14kAJLZ4dUpxYtxks",
+            "fontSize": 52.0,
+            "fontFamily": "CMU Bright SemiBold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.7982558,
+                0.06374801,
+                0.18795124
+            ],
+            "position": [
+                283.43475,
+                290.30286
+            ],
+            "text": "8YSEfJLVeZPLr2g2NpDSuqZNpmaH55iGTRXm42TjoTqc2o50",
+            "fontSize": 121.0,
+            "fontFamily": "CMU Serif Extra BoldSlanted",
+            "url": "LTzVC8kGWPO5eRTX6ReZMCXykED8",
+            "highlightArea": [
+                568.7318,
+                462.79617,
+                747.98615,
+                640.5183
+            ]
+        },
+        {
+            "color": [
+                0.061096437,
+                0.09545459,
+                0.7764367
+            ],
+            "position": [
+                319.73776,
+                519.745
+            ],
+            "text": "o8YNbh4ecrE6vhpquST87jV41YKkkR3CWwEL1AHHiAKqtzaEV0IK0B4VPnbyhNO8A98YC9SGitBK0",
+            "fontSize": 55.0,
+            "fontFamily": "CMU Concrete BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.80954087,
+                0.5814503,
+                0.4781633
+            ],
+            "position": [
+                693.8451,
+                149.13623
+            ],
+            "text": "osy6jqh7b1eYmu2JKxfwWnCeJjcEAGuiSJ1wxIBBz6QO8Fh5PryIW4JrNnjvy",
+            "fontSize": 146.0,
+            "fontFamily": "CMU Classical Serif Italic",
+            "url": "3Yws6ZQrJkhjC0mWvfhqLCBiIIG1MKmLWFQXDLNNmFiT1P9wczduaOXsa5GgviUzR6CqQDYVJwtpWNoVwtby3AtbGeooV8IV",
+            "highlightArea": [
+                382.15414,
+                517.4871,
+                800.1432,
+                1137.132
+            ]
+        },
+        {
+            "color": [
+                0.21619478,
+                0.12955226,
+                0.6943627
+            ],
+            "position": [
+                336.09085,
+                108.22949
+            ],
+            "text": "2LqUf8SWrikQY1fMJzm5iH7aXWQ9CvOIL2bzgBNlxblGJO3qi",
+            "fontSize": 41.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": "xeP0pXSL6DQZHGZHqk",
+            "highlightArea": [
+                557.7565,
+                140.17407,
+                681.48065,
+                326.5245
+            ]
+        },
+        {
+            "color": [
+                0.4557299,
+                0.64125115,
+                0.31861833
+            ],
+            "position": [
+                359.79208,
+                435.04254
+            ],
+            "text": "LEOG2pcL8sgUQOVheHdapvcHk22bsXCuGLNP",
+            "fontSize": 127.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": "nbIcvVrAUYOQ1edwZLLLiClBTTxrClvgidQthj6OfjXTtUZdZwwZZIF6b5yBBnyZ0flqgkKMwhuUsu6f76dkuZ3TweAEdKEx1frFtXqxL7cC",
+            "highlightArea": [
+                594.1306,
+                139.00381,
+                855.2785,
+                734.1321
+            ]
+        },
+        {
+            "color": [
+                0.5638072,
+                0.658876,
+                0.3877557
+            ],
+            "position": [
+                386.64926,
+                262.00488
+            ],
+            "text": "1fgtczO06STIZI0IDLDR4udZ9eQBB6Upiijj5reE8I4LyA7RUEOlZw2qHuzZY1HZGhb3TnL",
+            "fontSize": 93.0,
+            "fontFamily": "CMU Typewriter Text Bold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.66705304,
+                0.10406758,
+                0.36514786
+            ],
+            "position": [
+                623.0237,
+                297.33304
+            ],
+            "text": "Lpgol",
+            "fontSize": 126.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.51349086,
+                0.116093054,
+                0.34946385
+            ],
+            "position": [
+                389.49545,
+                427.31656
+            ],
+            "text": "PfXJM6j7utG2FLgOTUGthcHtXHonlQlnEQRzL0FuSGpFrMoqTAmrwTVpSYDkWNWqnSKKjd7t3tkpVwXVjrKa",
+            "fontSize": 57.0,
+            "fontFamily": "CMU Bright SemiBold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.85994136,
+                0.2272363,
+                0.56029826
+            ],
+            "position": [
+                194.98482,
+                205.46503
+            ],
+            "text": "ZQBhNUOXgNOEO66vfrchx1grKjhroWjYg564FWcs9jTRtp1mq54rYeHgCptOtkLSG5iWX",
+            "fontSize": 22.0,
+            "fontFamily": "CMU Concrete Italic",
+            "url": "YAF0aDcpDfi3zVOLDEXYEcsSr2SVYGdSXLI",
+            "highlightArea": [
+                241.95201,
+                303.15234,
+                971.95337,
+                689.6406
+            ]
+        },
+        {
+            "color": [
+                0.8529544,
+                0.9625441,
+                0.63723856
+            ],
+            "position": [
+                752.307,
+                471.2298
+            ],
+            "text": "e1N8ruefftP",
+            "fontSize": 137.0,
+            "fontFamily": "Latin Modern Math Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.7950927,
+                0.48779243,
+                0.953946
+            ],
+            "position": [
+                215.8804,
+                173.10349
+            ],
+            "text": "peB75vv3",
+            "fontSize": 134.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": "vKFPwtwNy7ILyPRJDC",
+            "highlightArea": [
+                528.67377,
+                324.00546,
+                1006.2706,
+                543.354
+            ]
+        },
+        {
+            "color": [
+                0.1370659,
+                0.4362548,
+                0.54443604
+            ],
+            "position": [
+                147.28787,
+                367.39087
+            ],
+            "text": "o8RZC6qvNXTNdPRPw8JtFyQycz4KN3ZutlxWsD3H",
+            "fontSize": 60.0,
+            "fontFamily": "CMU Sans Serif Medium",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.9365269,
+                0.6000809,
+                0.3444971
+            ],
+            "position": [
+                569.3817,
+                501.82413
+            ],
+            "text": "5d35RYsRTKleeNyNGVuRF1M6PhaSxSetnnzKFbttkzRnfwSoKWNHHpPLRetUZXpdXLD6hNi",
+            "fontSize": 53.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": "vb8QKMVYN36zesWHSKiIo9zmvz9JVi2prMZuZRYKvJstsmp7vkxlOxDAkNmTmq79tqAT",
+            "highlightArea": [
+                706.005,
+                462.06268,
+                865.9248,
+                1040.9622
+            ]
+        },
+        {
+            "color": [
+                0.72375816,
+                0.42753822,
+                0.9323298
+            ],
+            "position": [
+                323.23325,
+                605.446
+            ],
+            "text": "mVCtX6bEZ43YrgBjBFYzSZaLSFGY7TayboCSUNjM0Qeh7Phu",
+            "fontSize": 112.0,
+            "fontFamily": "CMU Classical Serif Italic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.31038764,
+                0.454508,
+                0.22979346
+            ],
+            "position": [
+                284.6939,
+                680.34546
+            ],
+            "text": "np8N9MsuUsFFdvHCAn1Gapub7y9xJZ6Egrint4mnVsnbg0ozwkCI2Ugj1WAbKn7NQ5oocMNRe594vBXd4YTZVRb4Uvy4hBMRsAbUO1C8KMwaucdzh",
+            "fontSize": 61.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.2647362,
+                0.056243308,
+                0.54418474
+            ],
+            "position": [
+                298.98853,
+                177.51929
+            ],
+            "text": "u2eyLPZfFgc",
+            "fontSize": 56.0,
+            "fontFamily": "CMU Serif Extra RomanSlanted",
+            "url": "2tLwvtdxk6MiCbS536D7LmWoZaIuj80myVzJ2mTecnUtByFTELX4xijJ59iseIdGmq1snfkma59RmO",
+            "highlightArea": [
+                507.41153,
+                299.879,
+                1274.6853,
+                1048.2264
+            ]
+        },
+        {
+            "color": [
+                0.27611926,
+                0.1898258,
+                0.27542344
+            ],
+            "position": [
+                355.22382,
+                776.854
+            ],
+            "text": "SzQrN1zeoUPxVEnbm50MgvxpP1V9apTTlRdkyZ9GQnnKc8JpY7ACslbbktVTynzfG64mXKXMkGVBX",
+            "fontSize": 97.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Medium",
+            "url": "ioJglsqvDr3zWBSkko5LtXzJqSY5DWCt1aJy1g0nxwlwyKz1AoVQxh612xjn4Jjrci6Nn4ffP75jcVLVP4z8",
+            "highlightArea": [
+                406.4361,
+                615.63763,
+                675.037,
+                1015.6631
+            ]
+        },
+        {
+            "color": [
+                0.68488365,
+                0.8501724,
+                0.06575597
+            ],
+            "position": [
+                399.06802,
+                507.97614
+            ],
+            "text": "nKU2LQ6P6Br1iaMTxJQKKZKmSZq40XRFnSjAUYpJ0sAxbdIRP9b",
+            "fontSize": 37.0,
+            "fontFamily": "CMU Typewriter Text LightOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.5836676,
+                0.5992846,
+                0.98849356
+            ],
+            "position": [
+                763.4046,
+                766.6135
+            ],
+            "text": "Ycv0nQZais8NO1YIgOJUHpBYFFLqwRdK7cq4t0ldFPWiPeMfiau2xc1DdsZVv0L9tUwacF81mLnwN1DUr",
+            "fontSize": 75.0,
+            "fontFamily": "CMU Serif Upright Italic UprightItalic",
+            "url": "P9",
+            "highlightArea": [
+                335.6131,
+                695.7504,
+                700.89014,
+                942.5859
+            ]
+        },
+        {
+            "color": [
+                0.8520467,
+                0.76725554,
+                0.12100102
+            ],
+            "position": [
+                639.83,
+                263.80057
+            ],
+            "text": "4FGd5TAU6ztHFNSGGL2kLrBzvDOquoClEBeKJaLOZreMFv9vYpBAIY3OwYwyizUlBZ9XnhyPxSoB26amzAv11Xhq2NzCPqjlKjYkGHlUXHt3cIZeAC9kzA7",
+            "fontSize": 62.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.39767987,
+                0.26709,
+                0.6296509
+            ],
+            "position": [
+                189.32347,
+                442.47522
+            ],
+            "text": "rzsbmmrouMwPyHTvvHWKK3Y6gtHPDln",
+            "fontSize": 12.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.82856345,
+                0.7962816,
+                0.08790708
+            ],
+            "position": [
+                449.49582,
+                295.88315
+            ],
+            "text": "rqP9rFW8v1OxZCpkgnd1TCisfu3ab4oWles9zV8NEGDlCS702lHd2o1PgHauA7rUeoMUGGiCSYskn8H90yzPveHhFce8tjGyaHEfQ",
+            "fontSize": 106.0,
+            "fontFamily": "Latin Modern Math Regular",
+            "url": "RJLjxooIIpe2T6zfRtMWD90JzrZIpW35TRaZwhMpGgNsdn0lR",
+            "highlightArea": [
+                152.17,
+                425.16147,
+                817.0829,
+                817.56055
+            ]
+        },
+        {
+            "color": [
+                0.6906293,
+                0.67748815,
+                0.3994215
+            ],
+            "position": [
+                177.23175,
+                203.50838
+            ],
+            "text": "8uvlQYJsnhlglmN10HOaK1owRjHFJe4DCgoEqpjE138I",
+            "fontSize": 108.0,
+            "fontFamily": "CMU Sans Serif Bold",
+            "url": "nKHNm8EQQGHCCBFlMmu6nFeov1JXKTyq8A5TxO5PCdH",
+            "highlightArea": [
+                201.78621,
+                507.52744,
+                505.61865,
+                1006.3269
+            ]
+        },
+        {
+            "color": [
+                0.0893916,
+                0.6371663,
+                0.6919337
+            ],
+            "position": [
+                481.5058,
+                160.74738
+            ],
+            "text": "cBMJmF86T5eahGHSxEjDraFt4PXLc7Zj2zDOn3HugFbwe5ofaIHTur0kK",
+            "fontSize": 146.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.5118992,
+                0.75098395,
+                0.85592747
+            ],
+            "position": [
+                788.6157,
+                294.56085
+            ],
+            "text": "9CuETTrX8UYuKmVoRpn9xT8Dmh5Vcpts67o5k7dDZ5OeEf5yM2T8gIKBvP5EPCZ0WMoFzPd4wVtYB1tkuOvsnmOWkq58eQaoCI",
+            "fontSize": 112.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": "wSX5pYS5UEK5Z7mxofH",
+            "highlightArea": [
+                122.12425,
+                486.97464,
+                551.65356,
+                690.5654
+            ]
+        },
+        {
+            "color": [
+                0.27715996,
+                0.28520277,
+                0.4824341
+            ],
+            "position": [
+                457.69727,
+                127.94273
+            ],
+            "text": "5MnOU",
+            "fontSize": 69.0,
+            "fontFamily": "CMU Typewriter Text LightOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.33857062,
+                0.6162018,
+                0.6536049
+            ],
+            "position": [
+                632.6239,
+                758.4032
+            ],
+            "text": "i94Hf7HPCxXG4c6DqpbR4ZppvvNrCYtO8v0L3SyGBMUmq1hiVoshviPBd2T1ef5gy4Z4QYtUYU9j2PLYHNcEux",
+            "fontSize": 75.0,
+            "fontFamily": "CMU Serif Extra BoldSlanted",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.24621859,
+                0.38339323,
+                0.5906903
+            ],
+            "position": [
+                555.54443,
+                547.2978
+            ],
+            "text": "mqE5aQHf6gdXQEgnZXqtTF8",
+            "fontSize": 38.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": "ttCmwF1Y4KGCGL4tBWLqGmiM2PHPYPPykVcatZYkJA7ymv",
+            "highlightArea": [
+                783.4229,
+                548.57056,
+                972.1509,
+                979.80273
+            ]
+        },
+        {
+            "color": [
+                0.9318408,
+                0.29721025,
+                0.5582531
+            ],
+            "position": [
+                391.98248,
+                353.83884
+            ],
+            "text": "WpWWSEcH4F1w2hCbv58dMTwphJrrGrSvrdnGodGZ4YDiDWELaMk6QVgYc99bJGnaxg4BClHQl4sZAYEnYnhK34f3v5Hra184HNVFwL8ccY4yW",
+            "fontSize": 136.0,
+            "fontFamily": "CMU Concrete Bold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.47644144,
+                0.14807726,
+                0.14545168
+            ],
+            "position": [
+                503.8789,
+                389.68085
+            ],
+            "text": "caAa0TYZyU2wpp0nHe9vkQc7NJKn2UIVyW4gbevCRHqUIFliUyL3jMcQNWCUbuuHpGEG4FBm6g3senpx3yb",
+            "fontSize": 133.0,
+            "fontFamily": "CMU Sans Serif BoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.8114158,
+                0.7606559,
+                0.6433421
+            ],
+            "position": [
+                693.7812,
+                334.0747
+            ],
+            "text": "3VXGRhMXFKaPx7w8DqYSTiMyTo1WKrDo5fbznbAXfQu3kYtehBH0JUvmftmxUMrYcTPjttCBz5oQX2catBwVHrh8W0",
+            "fontSize": 30.0,
+            "fontFamily": "CMU Sans Serif DemiCondensed",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.25217846,
+                0.41812593,
+                0.8618133
+            ],
+            "position": [
+                305.7014,
+                792.4648
+            ],
+            "text": "3bYygxIwKVz",
+            "fontSize": 53.0,
+            "fontFamily": "Latin Modern Math Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.6434998,
+                0.56358474,
+                0.7926471
+            ],
+            "position": [
+                435.36942,
+                367.3596
+            ],
+            "text": "OVyMxvFGrCye0uLuzkeL4ja4qHRk1RHFG3Dvcl16Rvcov4tYI5W59Dt0S06aAzHGH",
+            "fontSize": 64.0,
+            "fontFamily": "CMU Sans Serif Medium",
+            "url": "L0Qtjb7oZH3KL5g2EY2qVQfHkXg5pQtKZt2P",
+            "highlightArea": [
+                447.84125,
+                734.57587,
+                621.35583,
+                1260.8977
+            ]
+        },
+        {
+            "color": [
+                0.30131224,
+                0.81594276,
+                0.5603811
+            ],
+            "position": [
+                263.62158,
+                108.305016
+            ],
+            "text": "i9TfEnfLNA5UEC7GDYr8KtyWBvQ9EBfDgEGc5CGF6i2flLD1Vt47nhXKzA7OvEQWeE8NWHa1GMb2uBNIzBx3t8T0hsEl5aOzNGBmuPzafdmKGRq0m4ghgd2",
+            "fontSize": 38.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.44167656,
+                0.5370293,
+                0.68511635
+            ],
+            "position": [
+                603.6484,
+                671.3678
+            ],
+            "text": "dsr8UEvuSe61xkytkqDzjVnzS5QxBVmtAuiMhIIJn6K6q6J3aP4f7JzfHHsvYvQFZOQJQVaakgX1VX93T866XrJwwg7rYl0fTOBka6rzB",
+            "fontSize": 124.0,
+            "fontFamily": "CMU Bright Oblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.7795193,
+                0.36311606,
+                0.16632058
+            ],
+            "position": [
+                442.17966,
+                316.1159
+            ],
+            "text": "T9CW",
+            "fontSize": 88.0,
+            "fontFamily": "CMU Bright SemiBold",
+            "url": "rztD2ArBbxYFc7E1mdqpLRelk4dfPfAuafmZqcsBgntz6NVxNWBOi9gnn0Us9SSw",
+            "highlightArea": [
+                471.4117,
+                190.06882,
+                1253.9915,
+                875.1427
+            ]
+        },
+        {
+            "color": [
+                0.38300496,
+                0.706451,
+                0.7057846
+            ],
+            "position": [
+                488.74963,
+                581.2541
+            ],
+            "text": "iTQHKBN3jT0S5Hur",
+            "fontSize": 109.0,
+            "fontFamily": "CMU Serif Roman",
+            "url": "e8Q07z6760saOn",
+            "highlightArea": [
+                227.05573,
+                715.9759,
+                948.9945,
+                971.4017
+            ]
+        },
+        {
+            "color": [
+                0.5771727,
+                0.71704334,
+                0.4221546
+            ],
+            "position": [
+                470.1822,
+                124.498474
+            ],
+            "text": "J1azbUchOUg2UXG5G1481MMDq1Vr96mK8OZ9I2mUwQAAWFMNst8Dm9XRoV",
+            "fontSize": 135.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": "vwYMA8wJaoVKKDADAEAxGdCjs9UX6ta",
+            "highlightArea": [
+                686.90894,
+                381.57135,
+                1353.823,
+                1034.2059
+            ]
+        },
+        {
+            "color": [
+                0.4288687,
+                0.067627914,
+                0.8172859
+            ],
+            "position": [
+                351.00925,
+                610.5716
+            ],
+            "text": "fVjqYwYIPLZuLCsO8XNYszZTGk4E3di16BhL957yXGP3KfsuY8dncQSkih1Bc",
+            "fontSize": 87.0,
+            "fontFamily": "CMU Bright Oblique",
+            "url": "PY53kImLkDybKT1ksIH1vs0Mie1kOFZf2zWkGf41ftJr5Bc9nOIKFwYqsE2eUzIEkVASDsTpwsa55ZLAZ",
+            "highlightArea": [
+                269.04236,
+                128.16386,
+                662.5615,
+                264.18872
+            ]
+        },
+        {
+            "color": [
+                0.54557365,
+                0.26043478,
+                0.21011928
+            ],
+            "position": [
+                500.96988,
+                570.84827
+            ],
+            "text": "iw1UoyZfrgD1MQT4U9cgOq63TGwAdnmuAkI8CuT7gyGq3lY7t0nM55TNeLdR5rz61w1tReWlO0WVbu",
+            "fontSize": 74.0,
+            "fontFamily": "CMU Serif Roman",
+            "url": "ekr7ZJ6LomIzb8oZsQ",
+            "highlightArea": [
+                516.8008,
+                627.5261,
+                1105.4875,
+                1411.6177
+            ]
+        },
+        {
+            "color": [
+                0.81993616,
+                0.5307756,
+                0.08006037
+            ],
+            "position": [
+                553.01575,
+                539.9363
+            ],
+            "text": "e3a1Zkc2prBXSrTVhQfrOozl73Nh6DuvljBI4BZo0jQl2N3md7GzYVJP44MTyVgS4tb",
+            "fontSize": 86.0,
+            "fontFamily": "CMU Serif Bold",
+            "url": "NnGqOuScXcVvFLZUCLlkYhQKgzonQzCq4jit1FqKeTWyIJu4fqgA0qHrCsvAS",
+            "highlightArea": [
+                537.0958,
+                397.43997,
+                1132.2689,
+                875.7038
+            ]
+        },
+        {
+            "color": [
+                0.060985215,
+                0.65078264,
+                0.13875963
+            ],
+            "position": [
+                481.05762,
+                735.35706
+            ],
+            "text": "W7cyYI5umrG5f2pl8KgX3tyV4AfyI0SYOErJztWq87N4OwLVKaXvz8kErc9DV5e4JhDrbyMXf9jZV7w4UYYuO9eEbuKwYA29nKMP9PGTBmCCWnSlnbGoQCK",
+            "fontSize": 28.0,
+            "fontFamily": "CMU Serif Extra RomanSlanted",
+            "url": "pCNKr5QwHVLE2mrWhfuDgGV29lkTqQArWnydncLEK26tDr52ScZebbS9pD96rWodbv7SnOJWe46LJ4ZXP8iKF1vbqRsrpr4YMoROK0z",
+            "highlightArea": [
+                286.3408,
+                457.4325,
+                980.1487,
+                1195.7102
+            ]
+        },
+        {
+            "color": [
+                0.3961627,
+                0.042340282,
+                0.86630344
+            ],
+            "position": [
+                180.43683,
+                623.58093
+            ],
+            "text": "H1dy1oQbWXiSJhUbq066BYvBKsGBIFzDcsOTeSw3TAyX5UPWu",
+            "fontSize": 145.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.14289238,
+                0.8781258,
+                0.7157498
+            ],
+            "position": [
+                172.0342,
+                492.64185
+            ],
+            "text": "fuLXVFodnNCxrdhRRfXefVZQHrec6MbEyGvFYh1K3ZzZNYp9PMlU5tVRGnEdow3ougQf9IWEMhSsjqVlpG7c2Wzja4",
+            "fontSize": 47.0,
+            "fontFamily": "CMU Sans Serif BoldOblique",
+            "url": "A6QldTTRmVny1ohAWFFJ9IzLBMqOCWTiJ12xIDoxNi",
+            "highlightArea": [
+                299.94507,
+                254.93538,
+                997.2791,
+                975.35095
+            ]
+        },
+        {
+            "color": [
+                0.95323014,
+                0.07676328,
+                0.71487993
+            ],
+            "position": [
+                578.41925,
+                748.01984
+            ],
+            "text": "XV0HS00UDuenw6WnXBNj57TIYA7NurkBiCquZtMTGkBjiRy2u6",
+            "fontSize": 128.0,
+            "fontFamily": "CMU Serif Italic",
+            "url": "XEYekdaVHgFx2CzQraWLw7SOXiU0RquoLds2IhwzFpr6vJaEaoakVNE4BytYAt6PD28fWXgqAYSqA1OX5ev1kGU7Lh4TYZRXaZkDxmtwZlvP02FunRAzMBg",
+            "highlightArea": [
+                673.83746,
+                213.34872,
+                1044.3303,
+                514.90015
+            ]
+        },
+        {
+            "color": [
+                0.52569634,
+                0.7497377,
+                0.21107677
+            ],
+            "position": [
+                227.01233,
+                425.9599
+            ],
+            "text": "Uv2ZNGbPIYVw92xNuYHhRpu7XhOvciYaKQILWep8sRc4qtoKFi13JSqmpAoeZxx8CsKI92GzUk6laqrYUCbvs501h3rlIAL",
+            "fontSize": 72.0,
+            "fontFamily": "CMU Typewriter Text Bold",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.37041786,
+                0.39862365,
+                0.12626196
+            ],
+            "position": [
+                556.4137,
+                483.93677
+            ],
+            "text": "AFDelazLIFYAvHY1DBsYQcDdQGyo8A2LqJVMVcs7KLEmG0NA1khUTygCh10Sfjfx2OyPXiv",
+            "fontSize": 85.0,
+            "fontFamily": "CMU Concrete Italic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.6326762,
+                0.7569474,
+                0.89528084
+            ],
+            "position": [
+                372.55765,
+                647.95465
+            ],
+            "text": "GrZOgMz1GLJHphGT4T0wB2sA7XNp7sBDq3t2mXlgY687rAnEK65ktqCL1RvIYtLtTAtoUHCFdRnQ1MoKGTP41W0PN8bQbZ4bx6G",
+            "fontSize": 81.0,
+            "fontFamily": "CMU Sans Serif BoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.22261253,
+                0.6526627,
+                0.41161424
+            ],
+            "position": [
+                581.1826,
+                432.99393
+            ],
+            "text": "1I45wZh8yKuUkXZ43TppS4uAY10AOoI6uQzIrv4EpdTkQS6Rd5jtX",
+            "fontSize": 44.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.25100377,
+                0.84268904,
+                0.59957415
+            ],
+            "position": [
+                297.20303,
+                249.20651
+            ],
+            "text": "XGPEDxSUwqywz",
+            "fontSize": 67.0,
+            "fontFamily": "Latin Modern Math Regular",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.8626368,
+                0.9269762,
+                0.8686118
+            ],
+            "position": [
+                161.30206,
+                171.35352
+            ],
+            "text": "m8zFXoT1brW7WrW3j5FlA0TbpkSJJZJ3SKk2qhra0wV6V9org1eX45bvTiAouo0zwi0CFqgcTJN896jYceU7P9QZl8gYHsLKguGmV8h",
+            "fontSize": 24.0,
+            "fontFamily": "CMU Serif Upright Italic UprightItalic",
+            "url": "QMnzQDU7gO5kDNmmKlAOjL5IzAqyM8WUvj7L3mneVC8Pgp6Ev3qsczYs7EcBiHx0y5sUz",
+            "highlightArea": [
+                210.83798,
+                418.5591,
+                756.9446,
+                997.84705
+            ]
+        },
+        {
+            "color": [
+                0.7451734,
+                0.41696745,
+                0.81588185
+            ],
+            "position": [
+                436.69046,
+                758.9482
+            ],
+            "text": "CUMgp9SXegsdsf8Idudn700WwNDOBfASaLlXlhZxpDk0N6tFwjC1XHg647EorULuUgWQCrDvqeW9Jau",
+            "fontSize": 37.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": "Gt5HDrIXBnCqSLqV900dLLJWMveLEKp9HJ5Yk72p49cUeT40ekJfUmgfqjq91AVE5BWddYIbqkYGEL32knfzBSQHv6qos60hWwRLz1MauDLeM8EKI9g",
+            "highlightArea": [
+                687.05756,
+                467.81976,
+                957.6678,
+                620.5879
+            ]
+        },
+        {
+            "color": [
+                0.1921263,
+                0.73821825,
+                0.73841995
+            ],
+            "position": [
+                186.76208,
+                249.92825
+            ],
+            "text": "Bi9vV48onJg",
+            "fontSize": 22.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": "wOcrFaNOWd8VzjOHph99",
+            "highlightArea": [
+                413.12006,
+                103.75101,
+                1158.8933,
+                693.36646
+            ]
+        },
+        {
+            "color": [
+                0.48045224,
+                0.42819732,
+                0.9851936
+            ],
+            "position": [
+                654.39105,
+                375.11652
+            ],
+            "text": "ujoS6GCvWF8e1rqucvlW8sRJmzIN2pzqK0V9OjBG5FuAM3OcUPLmlApPM5klSQVOrJqMHob49hVMr9LEJlrZGgFbmkGuxyQzrxIsklfeLj6kdPIZjXMVhCz",
+            "fontSize": 20.0,
+            "fontFamily": "CMU Serif BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.8495853,
+                0.36833504,
+                0.6190043
+            ],
+            "position": [
+                441.3229,
+                314.3372
+            ],
+            "text": "OMKOkVCnIB9m37fp7Fcwo6VOl19lxOeN7ERltVsnnpHQIEicC4pnnpNZfmOe9GuLPmNn1xN2Yi22IBhyGXtkgw2uDbK4mktErXRmFzH2O6mq63BA9",
+            "fontSize": 8.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.9821533,
+                0.06971503,
+                0.16519524
+            ],
+            "position": [
+                101.270386,
+                792.46497
+            ],
+            "text": "UW2mDVm4fDgAU19zXfs7LGYh7mClXvOXu8ybxHdsJi3DRjWisX4WZXAN4t9b183ToOK9W9",
+            "fontSize": 79.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": "YITZXwUO6mYFj6prtMMTUEZ4yvQkVFpUoSV6WZtjTvwjIqASLGA5sI4hDskL9JunENSiVo8SVrz3WjWBHkRWy54E1hoIjXM2",
+            "highlightArea": [
+                433.35135,
+                692.35144,
+                965.3799,
+                1236.3914
+            ]
+        },
+        {
+            "color": [
+                0.93320024,
+                0.10768403,
+                0.46772355
+            ],
+            "position": [
+                440.29944,
+                426.49954
+            ],
+            "text": "yX6gqDAot6C6YJFqysXi7J3dRiCnwlKXUgIP9wMH8Sl0G1v0g6syca4HD1romWO2lS4xsHgPuR8KLZGUR2T9YvQWckFdaiuAiPCa25Oum96P",
+            "fontSize": 84.0,
+            "fontFamily": "CMU Serif Italic",
+            "url": "awKsOrKm2mp6pk25JoPFU8Lohr8lzGaPZGArIDKMs7Qjce3e8T2XUfh29GQ5F4cSLEXnBqFlz0BgVojp8LCd5B2P",
+            "highlightArea": [
+                601.7577,
+                485.61395,
+                1181.2218,
+                1130.6079
+            ]
+        },
+        {
+            "color": [
+                0.47229856,
+                0.3140619,
+                0.34855142
+            ],
+            "position": [
+                464.70477,
+                773.3617
+            ],
+            "text": "cVsPPzslvl3VDmNhxW97bYRMPs2w8CHklNFkU0PIXI5xPuKMf2qSicYac5JFzo6J3fYLZdxKCA8ewimOBIDdOt2hVHWhiec",
+            "fontSize": 78.0,
+            "fontFamily": "CMU Bright SemiBoldOblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.13957013,
+                0.9379852,
+                0.8630365
+            ],
+            "position": [
+                749.9255,
+                723.50916
+            ],
+            "text": "ZsZI98bBneqgeT0asznV",
+            "fontSize": 5.0,
+            "fontFamily": "CMU Sans Serif Medium",
+            "url": "TFzeJMgOzIyaO0maLqTBMz4dAlEGMvWFa6N9fCHLl8GpvEN7VnmUAUBZJl2JtQYEGL",
+            "highlightArea": [
+                127.84818,
+                442.10303,
+                419.0837,
+                621.4606
+            ]
+        },
+        {
+            "color": [
+                0.055078037,
+                0.5291583,
+                0.19634226
+            ],
+            "position": [
+                541.338,
+                453.44385
+            ],
+            "text": "xLPsXTluEIEkkOvPFzbnPxbtMlGlRjbp7fuqRcNInaIdsjleZhdk7uXEPQGeVPojUcrUlFmY8DtJyuse5yoJp3UDT547qVKm0spkMFXvi4V",
+            "fontSize": 83.0,
+            "fontFamily": "CMU Serif BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.9362743,
+                0.8100263,
+                0.15068044
+            ],
+            "position": [
+                607.6887,
+                616.91376
+            ],
+            "text": "QY7SEiXdcUpvBurIXMx6SgiwaVYFjRywj9eQbzS9",
+            "fontSize": 42.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.31935683,
+                0.01657498,
+                0.9063699
+            ],
+            "position": [
+                615.98804,
+                674.1994
+            ],
+            "text": "ARzHo5FUTv",
+            "fontSize": 109.0,
+            "fontFamily": "CMU Typewriter Text Regular",
+            "url": "hb5IjB1NzQS1CIJqOqxuIzfkb1tuixyLxcSWAXq68IFsMXeU3GtzxCItDurPKzI6e5vZxBnXjLQHplttaU",
+            "highlightArea": [
+                603.27814,
+                495.8617,
+                880.59076,
+                684.5897
+            ]
+        },
+        {
+            "color": [
+                0.095257536,
+                0.80101943,
+                0.59177023
+            ],
+            "position": [
+                534.3285,
+                159.62628
+            ],
+            "text": "LmLzzqn41Sdo2N3b4HxvIDESrHn1hCNfYHmyIM8SqWuqU1WMjndxwEDyaHe",
+            "fontSize": 34.0,
+            "fontFamily": "CMU Bright Roman",
+            "url": "IqsJMRA3BgC8vsBvq2wid84jbibBCHNPgPDcOCc",
+            "highlightArea": [
+                464.00568,
+                698.2233,
+                1152.3586,
+                1002.09015
+            ]
+        },
+        {
+            "color": [
+                0.89213276,
+                0.25474814,
+                0.6129728
+            ],
+            "position": [
+                767.55365,
+                172.48682
+            ],
+            "text": "lypbyAzIaPz2qdZhtKPyMigp4U8gR4zSxnTuQfr",
+            "fontSize": 65.0,
+            "fontFamily": "CMU Typewriter Text Light",
+            "url": "2FIdPVYMLtdfmv9lkHZMJFK1wJHCX",
+            "highlightArea": [
+                785.5154,
+                252.9486,
+                1246.2681,
+                543.7152
+            ]
+        },
+        {
+            "color": [
+                0.8353553,
+                0.17231692,
+                0.9791064
+            ],
+            "position": [
+                144.00269,
+                634.207
+            ],
+            "text": "ul1FBAlnCHhae9t2Il23n1iNXpV0tUAoH9MEbvdyhLB7EYHEt85G4JHuznF87c",
+            "fontSize": 69.0,
+            "fontFamily": "CMU Sans Serif Oblique",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.8449671,
+                0.40633017,
+                0.065153725
+            ],
+            "position": [
+                343.2621,
+                548.68896
+            ],
+            "text": "xXiFrtK9eNWJfu0NgLb1xzekT1GDl1XMsVqnVICfFnH0J8A39kF7HBzzrNaFTHRF0Rqy",
+            "fontSize": 126.0,
+            "fontFamily": "CMU Typewriter Text Variable Width Italic",
+            "url": "5t8Q9Xibq8p6CO9JEN7jgQ3r9rd9lp2LOpkXOzNOyK0HzUys8cm5jUCyIsYwdZ",
+            "highlightArea": [
+                573.25665,
+                743.00464,
+                1064.0237,
+                1403.038
+            ]
+        },
+        {
+            "color": [
+                0.51456076,
+                0.9378549,
+                0.20898095
+            ],
+            "position": [
+                234.61699,
+                131.61096
+            ],
+            "text": "fpyKJdjDVumRWs92v4pcGeSqta",
+            "fontSize": 11.0,
+            "fontFamily": "CMU Concrete BoldItalic",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.99972486,
+                0.16438831,
+                0.62217885
+            ],
+            "position": [
+                139.89703,
+                157.38875
+            ],
+            "text": "Ewz2dyAlIyTyKbQnRWa0ES2m15RW3Gl8eKYixh7zSC6dYSgEc3Ox5pPzU1XQXpvktv5SkzUrCBgjAjzMoXTCr9f9ZFmsJOEPSUU8T6gEqeYOeAU872tgDldz",
+            "fontSize": 70.0,
+            "fontFamily": "CMU Serif Roman",
+            "url": null,
+            "highlightArea": null
+        },
+        {
+            "color": [
+                0.24145642,
+                0.4866647,
+                0.6138781
+            ],
+            "position": [
+                344.12732,
+                636.44476
+            ],
+            "text": "bsDkI5JI7v6qezmJZS1s9ki4dBjIa7TKtEj4mBYlFT4KQADMtN90RkwsDvsecqWKzMaCu3rpJFtt1uG4JZWsU8yBJcW5GPWzzQVddNUsF384TILEv",
+            "fontSize": 82.0,
+            "fontFamily": "CMU Typewriter Text BoldItalic",
+            "url": null,
+            "highlightArea": null
+        }
+    ]
+}
