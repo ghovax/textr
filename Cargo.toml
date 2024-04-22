@@ -22,6 +22,7 @@ printpdf = { version = "0.7.0", features = [
 ] }
 uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 lopdf = "0.32.0"
+image = { version = "0.25.1", default-features = false, features = ["png"] }
 
 [profile.release]
 debug = true

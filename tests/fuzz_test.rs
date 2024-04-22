@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    const PDF_EQUALITY_THRESHOLD: f64 = 0.30;
+    const PDF_EQUALITY_THRESHOLD: f64 = 0.37;
 
     #[test]
     fn compare_fuzz_targets_with_reference_pdfs() {

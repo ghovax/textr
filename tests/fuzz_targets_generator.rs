@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use image::{Rgba, RgbaImage};
+    use rand::prelude::SliceRandom;
     use rand::Rng as _;
-    use rand::{distributions::Alphanumeric, prelude::SliceRandom};
-    use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
     use serde::{Deserialize, Serialize};
     use std::io::Write as _;
     use std::path::PathBuf;
@@ -98,15 +98,8 @@ mod tests {
         rng: &mut rand::rngs::ThreadRng,
         configuration: &FuzzTargetsGeneratorConfiguration,
     ) -> String {
-        // let length = rng.gen_range(1..=configuration.maximum_string_length);
-        // rand_utf8::rand_utf8(rng, length).to_string()
         let length = rng.gen_range(1..=configuration.maximum_string_length);
-        let mut string = rng
-            .sample_iter(&Alphanumeric)
-            .take(length)
-            .collect::<Vec<_>>();
-        string.shuffle(rng);
-        String::from_utf8(string).unwrap()
+        rand_utf8::rand_utf8(rng, length).to_string()
     }
 
     fn generate_raw_contents(
@@ -116,7 +109,6 @@ mod tests {
         let number_of_elements = rng.gen_range(1..=configuration.maximum_number_of_elements);
 
         (0..number_of_elements)
-            .into_par_iter()
             .map(|_| {
                 let mut rng = rand::thread_rng();
 
@@ -126,9 +118,16 @@ mod tests {
                 let image_files = std::fs::read_dir(&configuration.images_directory)
                     .unwrap()
                     .map(|entry| entry.unwrap().path())
+                    .filter(|path| match path.extension() {
+                        Some(extension) => match extension.to_str() {
+                            Some(extension) => extension == "png",
+                            None => false,
+                        },
+                        None => false,
+                    })
                     .collect::<Vec<_>>();
 
-                let mut content_type = rng.gen_range(0..=10);
+                let mut content_type = rng.gen_range(0..=100);
                 if !configuration.include_images {
                     content_type = rng.gen_range(0..=90);
                 }
@@ -194,5 +193,22 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn generate_random_image() {
+        let mut rng = rand::thread_rng();
+        let mut image = RgbaImage::new(rng.gen_range(1..=150), rng.gen_range(1..=150));
+        for (_, _, pixel) in image.enumerate_pixels_mut() {
+            *pixel = Rgba([
+                rng.gen_range(0..=255),
+                rng.gen_range(0..=255),
+                rng.gen_range(0..=255),
+                rng.gen_range(0..=255),
+            ]);
+        }
+        image
+            .save(format!("images/{}.png", uuid::Uuid::new_v4()))
+            .unwrap();
     }
 }

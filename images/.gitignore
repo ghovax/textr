@@ -1,0 +1,7 @@
+# Ignore everything in this directory
+*
+# Except this file
+!.gitignore
+
+# This folder needs to be present because of the testing functionality, but
+# we ignore all the files because of a storage issue with all the files size

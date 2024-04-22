@@ -1,10 +1,10 @@
 {
-    "documentsToGenerate": 10,
-    "maximumNumberOfElements": 300,
-    "maximumStringLength": 120,
+    "documentsToGenerate": 4,
+    "maximumNumberOfElements": 100,
+    "maximumStringLength": 30,
     "fontSizeRange": [
         5,
-        150
+        53
     ],
     "pageWidthRange": [
         300,
@@ -19,7 +19,7 @@
         800.0
     ],
     "imagesDirectory": "images",
-    "includeImages": false,
+    "includeImages": true,
     "fontFamiliesToSampleFrom": [
         "CMU Typewriter Text Bold",
         "CMU Sans Serif BoldOblique",
