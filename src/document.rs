@@ -74,6 +74,7 @@ impl Document {
             .map(|font_path| font_path.path())
             .collect::<Vec<_>>(); // Need to collect it because of a borrowing requirements
 
+        font_paths.sort();
         let math_font_path = "fonts/lm-math/opentype/latinmodern-math.otf";
         font_paths.push(PathBuf::from_str(math_font_path).map_err(|error| {
             TraceableError::with_error(
@@ -81,7 +82,6 @@ impl Document {
                 &error,
             )
         })?);
-        font_paths.sort();
 
         for font_path in font_paths {
             let _font_index = pdf_document.add_font(&font_path).unwrap();

@@ -1,0 +1,150 @@
+{
+    "documentId": "4oYm5w3jefZbHFa0UJkqBtYe8Ty2yhBz",
+    "instanceId": "grwG9a9hI1T8qruk4kOFpYNC84Dh35v7",
+    "operations": [
+        {
+            "pageWidth": 210.0,
+            "pageHeight": 297.0
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                17.323853,
+                268.22235
+            ],
+            "textString": "1. The standard Lorem Ipsum passage, used since the 1500s",
+            "fontSize": 16.0,
+            "fontIndex": 5
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                17.323853,
+                258.22235
+            ],
+            "textString": "\"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+            "fontSize": 12.0,
+            "fontIndex": 2
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                17.323853,
+                251.22235
+            ],
+            "textString": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco la-",
+            "fontSize": 12.0,
+            "fontIndex": 2
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                17.323853,
+                244.22235
+            ],
+            "textString": "-boris nisi ut aliquip ex ea commodo consequat.",
+            "fontSize": 12.0,
+            "fontIndex": 2
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                110.323853,
+                230.22235
+            ],
+            "textString": "𝑥 + 1 − 𝑗",
+            "fontSize": 12.0,
+            "fontIndex": 29
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                129.423853,
+                232.22235
+            ],
+            "textString": "2",
+            "fontSize": 9.0,
+            "fontIndex": 29
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                101.723853,
+                229.42235
+            ],
+            "textString": "∑",
+            "fontSize": 19.0,
+            "fontIndex": 29
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                101.723853,
+                224.42235
+            ],
+            "textString": "𝑗 = 1",
+            "fontSize": 8.0,
+            "fontIndex": 29
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                23.723853,
+                230.42235
+            ],
+            "textString": "This is supposed to be a formula",
+            "fontSize": 12.0,
+            "fontIndex": 18
+        },
+        {
+            "color": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "position": [
+                91.723853,
+                230.42235
+            ],
+            "textString": "⟾",
+            "fontSize": 12.0,
+            "fontIndex": 29
+        }
+    ]
+}
