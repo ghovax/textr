@@ -15,14 +15,13 @@ clap = { version = "4.5.3", features = ["derive"] }
 rayon = "1.10.0"
 rand = "0.8.5"
 rand-utf8 = "0.0.1"
-printpdf = { version = "0.7.0", features = [
-    "log",
-    "embedded_images",
-    "font_subsetting",
-] }
-uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
+# uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 lopdf = "0.32.0"
 image = { version = "0.25.1", default-features = false, features = ["png"] }
+owned_ttf_parser = "0.20.0"
+time = "0.3.36"
+nalgebra-glm = "0.18.0"
+unicode-normalization = "0.1.23"
 
 [profile.release]
 debug = true

@@ -1,71 +1,229 @@
-#[cfg(test)]
-mod tests {
-    const PDF_EQUALITY_THRESHOLD: f64 = 0.37;
+use std::{io::Write as _, ops::Range, str::FromStr as _};
 
-    #[test]
-    fn compare_fuzz_targets_with_reference_pdfs() {
-        let fuzz_targets = std::fs::read_dir("fuzz/fuzz_targets")
+use image::{Rgba, RgbaImage};
+use rand::{distributions::Alphanumeric, Rng};
+use serde::Serialize as _;
+use textr::error::TraceableError;
+
+struct FuzzTargetsGeneratorConfiguration {
+    documents_to_generate: u32,
+    font_indices_range: Range<usize>,
+    maximum_number_of_elements: usize,
+    maximum_string_length: usize,
+    font_size_range: Range<f32>,
+    page_width_range: Range<f32>,
+    page_height_range: Range<f32>,
+    element_position_range: Range<f32>,
+}
+
+#[test]
+fn generate_fuzz_targets_from_configuration_file() {
+    let configuration = FuzzTargetsGeneratorConfiguration {
+        documents_to_generate: 10,
+        font_indices_range: 0..30,
+        maximum_number_of_elements: 190,
+        maximum_string_length: 230,
+        font_size_range: 39.0..65.0,
+        page_width_range: 200.0..1300.0,
+        page_height_range: 200.0..800.0,
+        element_position_range: 0.0..600.0,
+    };
+
+    let documents: Vec<_> = (0..configuration.documents_to_generate)
+        .map(|_| {
+            let mut rng = rand::thread_rng();
+            let document_id = rng
+                .clone()
+                .sample_iter(&Alphanumeric)
+                .map(char::from)
+                .take(32)
+                .collect::<String>();
+            let instance_id = rng
+                .clone()
+                .sample_iter(&Alphanumeric)
+                .map(char::from)
+                .take(32)
+                .collect::<String>();
+
+            let mut operations = Vec::new();
+
+            let page_width = rng.gen_range(configuration.page_width_range.clone());
+            let page_height = rng.gen_range(configuration.page_height_range.clone());
+            let first_page = textr::document::Operation::AppendNewPage {
+                page_width,
+                page_height,
+            };
+            operations.push(first_page);
+
+            for _ in 0..rng.gen_range(1..configuration.maximum_number_of_elements) {
+                operations.push(random_operation(&mut rng, &configuration));
+            }
+
+            textr::document::Document {
+                document_id,
+                instance_id,
+                operations,
+            }
+        })
+        .collect();
+
+    // Save all the documents to JSON files
+    documents.into_iter().for_each(|document| {
+        let document_path = format!("fuzz/fuzz_targets/{}.json", document.document_id);
+        let mut document_file = std::fs::File::create(document_path).unwrap();
+        // Serialize the document to JSON and write it
+        let mut content_buffer = Vec::new();
+        let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
+        let mut serializer = serde_json::Serializer::with_formatter(&mut content_buffer, formatter);
+        document.serialize(&mut serializer).unwrap();
+        document_file.write_all(&content_buffer).unwrap();
+    });
+}
+
+fn random_operation(
+    rng: &mut rand::rngs::ThreadRng,
+    configuration: &FuzzTargetsGeneratorConfiguration,
+) -> textr::document::Operation {
+    let content_type_selector = rng.gen_range(0..=100);
+    match content_type_selector {
+        0..=69 => {
+            let color = [
+                rng.gen_range(0.0..=1.0),
+                rng.gen_range(0.0..=1.0),
+                rng.gen_range(0.0..=1.0),
+            ];
+            let position = [
+                rng.gen_range(configuration.element_position_range.clone()),
+                rng.gen_range(configuration.element_position_range.clone()),
+            ];
+            let text_string = random_utf8_characters(rng, configuration);
+            let font_size = rng.gen_range(configuration.font_size_range.clone());
+            let font_index = rng.gen_range(configuration.font_indices_range.clone());
+            textr::document::Operation::UnicodeText {
+                color,
+                position,
+                text_string,
+                font_size,
+                font_index,
+            }
+        }
+        70..=100 => {
+            let page_width = rng.gen_range(configuration.page_width_range.clone());
+            let page_height = rng.gen_range(configuration.page_height_range.clone());
+            textr::document::Operation::AppendNewPage {
+                page_width,
+                page_height,
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn random_utf8_characters(
+    rng: &mut rand::rngs::ThreadRng,
+    configuration: &FuzzTargetsGeneratorConfiguration,
+) -> String {
+    let length = rng.gen_range(1..=configuration.maximum_string_length);
+    rand_utf8::rand_utf8(rng, length).to_string()
+}
+
+#[test]
+fn generate_random_image() {
+    let mut rng = rand::thread_rng();
+    let mut image = RgbaImage::new(rng.gen_range(1..=150), rng.gen_range(1..=150));
+    for (_, _, pixel) in image.enumerate_pixels_mut() {
+        *pixel = Rgba([
+            rng.gen_range(0..=255),
+            rng.gen_range(0..=255),
+            rng.gen_range(0..=255),
+            rng.gen_range(0..=255),
+        ]);
+    }
+    let image_name = rng
+        .sample_iter(&Alphanumeric)
+        .map(char::from)
+        .take(32)
+        .collect::<String>();
+    image.save(format!("images/{}.png", image_name)).unwrap();
+}
+
+#[test]
+fn generate_target_references_from_fuzz_targets() {
+    let fuzz_targets = std::fs::read_dir("fuzz/fuzz_targets")
+        .unwrap()
+        .filter(|entry| {
+            let entry = entry.as_ref().unwrap();
+            entry.file_name().to_str().unwrap().ends_with(".json")
+        });
+
+    for fuzz_target in fuzz_targets {
+        let fuzz_target_path = fuzz_target.unwrap().path();
+        let fuzz_target_file_stem = fuzz_target_path
+            .file_stem()
             .unwrap()
-            .filter(|entry| {
-                let entry = entry.as_ref().unwrap();
-                entry.file_name().to_str().unwrap().ends_with(".json")
-            });
+            .to_str()
+            .unwrap()
+            .to_string();
 
-        for fuzz_target in fuzz_targets {
-            let fuzz_target_path = fuzz_target.unwrap().path();
-            let fuzz_target_file_stem = fuzz_target_path.file_stem().unwrap().to_str().unwrap();
-
-            let document_content =
-                std::fs::read(format!("fuzz/fuzz_targets/{}.json", fuzz_target_file_stem)).unwrap();
-            let document: textr::document::Document =
-                serde_json::from_slice(&document_content).unwrap();
-            let pdf_document_bytes = textr::document::document_to_pdf(&document)
-                .unwrap()
-                .save_to_bytes()
+        let document_content =
+            std::fs::read(format!("fuzz/fuzz_targets/{}.json", fuzz_target_file_stem))
+                .map_err(|error| {
+                    TraceableError::with_error(
+                        format!("Failed to read JSON document {:?}", fuzz_target_file_stem),
+                        &error,
+                    )
+                })
                 .unwrap();
-            let pdf_document = lopdf::Document::load_mem(&pdf_document_bytes).unwrap();
-            let pdf_document_id = pdf_document.trailer.get(b"ID").unwrap().clone();
-
-            let other_pdf_document_bytes = std::fs::read(format!(
-                "fuzz/target_references/{}.pdf",
-                fuzz_target_file_stem
-            ))
+        let document: textr::document::Document = serde_json::from_slice(&document_content)
+            .map_err(|error| {
+                TraceableError::with_error(
+                    format!("Failed to parse JSON document {:?}", fuzz_target_file_stem),
+                    &error,
+                )
+            })
             .unwrap();
-            let other_pdf_document = lopdf::Document::load_mem(&other_pdf_document_bytes).unwrap();
-            let other_pdf_document_id = other_pdf_document.trailer.get(b"ID").unwrap().clone();
+        let pdf_document_path = std::path::PathBuf::from_str(&format!(
+            "fuzz/target_references/{}.pdf",
+            fuzz_target_file_stem
+        ))
+        .unwrap();
+        document.save_to_pdf_file(&pdf_document_path).unwrap();
+    }
+}
 
-            assert_eq!(
-                pdf_document_id, other_pdf_document_id,
-                "the document {:?} does not have a matching ID with its counterpart, they are definitely different",
-                fuzz_target_file_stem
-            );
-            assert_eq!(
-                pdf_document_bytes.len(),
-                other_pdf_document_bytes.len(),
-                "the document {:?} differs in size from its counterpart: {} != {}, they may have been produced in different release modes or just be different files",
-                fuzz_target_file_stem,
-                pdf_document_bytes.len(),
-                other_pdf_document_bytes.len()
-            );
-            let byte_difference = pdf_document_bytes
-                .iter()
-                .zip(other_pdf_document_bytes.iter())
-                .fold(0, |byte_difference, (pdf_byte, other_pdf_byte)| {
-                    if pdf_byte != other_pdf_byte {
-                        byte_difference + 1
-                    } else {
-                        byte_difference
-                    }
-                });
-            let byte_difference_percentage =
-                (byte_difference as f64) / (pdf_document_bytes.len() as f64);
+#[test]
+fn compare_fuzz_targets_with_reference_pdfs() {
+    let fuzz_targets = std::fs::read_dir("fuzz/fuzz_targets")
+        .unwrap()
+        .filter(|entry| {
+            let entry = entry.as_ref().unwrap();
+            entry.file_name().to_str().unwrap().ends_with(".json")
+        });
 
-            assert!(
-                byte_difference_percentage < PDF_EQUALITY_THRESHOLD,
-                "the document {:?} differs in number of bytes from its counterpart by more than the accepted threshold: {} > {}, either change the threshold or accept that they are different files",
+    for fuzz_target in fuzz_targets {
+        let fuzz_target_path = fuzz_target.unwrap().path();
+        let fuzz_target_file_stem = fuzz_target_path.file_stem().unwrap().to_str().unwrap();
+
+        let document_path = format!("fuzz/fuzz_targets/{}.json", fuzz_target_file_stem);
+        let document_content = std::fs::read(document_path.clone()).unwrap();
+        let document: textr::document::Document =
+            serde_json::from_slice(&document_content).unwrap();
+        let pdf_document_bytes = document
+            .to_pdf()
+            .unwrap()
+            .save_to_bytes(document.instance_id)
+            .unwrap();
+
+        let other_pdf_document_path =
+            format!("fuzz/target_references/{}.pdf", fuzz_target_file_stem);
+        let other_pdf_document_bytes = std::fs::read(other_pdf_document_path.clone()).unwrap();
+
+        if pdf_document_bytes != other_pdf_document_bytes {
+            panic!(
+                "the document {:?} differs in byte content from its counterpart: {} != {}, they may have been produced in different release modes or just be different files",
                 fuzz_target_file_stem,
-                byte_difference_percentage,
-                PDF_EQUALITY_THRESHOLD
+                document_path,
+                other_pdf_document_path
             );
         }
     }
