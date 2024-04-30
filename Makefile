@@ -3,5 +3,5 @@ clean:
 	cargo clean
 
 # Build the documentation
-docs:
+documentation:
 	cargo doc
