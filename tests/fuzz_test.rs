@@ -19,7 +19,7 @@ struct FuzzTargetsGeneratorConfiguration {
 #[test]
 fn generate_fuzz_targets_from_configuration_file() {
     let configuration = FuzzTargetsGeneratorConfiguration {
-        documents_to_generate: 10,
+        documents_to_generate: 30,
         font_indices_range: 0..30,
         maximum_number_of_elements: 190,
         maximum_string_length: 230,
@@ -156,6 +156,19 @@ fn generate_target_references_from_fuzz_targets() {
             entry.file_name().to_str().unwrap().ends_with(".json")
         });
 
+    // Empty out the directory contents except the .gitignore, keeping the folder
+    let entries = std::fs::read_dir("fuzz/target_references").unwrap();
+
+    // Iterate over the entries and remove each one
+    for entry in entries {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+
+        // Check if the entry is a file or a directory
+        if file_type.is_file() && entry.file_name() != ".gitignore" {
+            std::fs::remove_file(entry.path()).unwrap();
+        }
+    }
     for fuzz_target in fuzz_targets {
         let fuzz_target_path = fuzz_target.unwrap().path();
         let fuzz_target_file_stem = fuzz_target_path
@@ -188,11 +201,77 @@ fn generate_target_references_from_fuzz_targets() {
         ))
         .unwrap();
         document.save_to_pdf_file(&pdf_document_path).unwrap();
+
+        let ps_document_path = std::path::PathBuf::from_str(&format!(
+            "fuzz/target_references/{}.ps",
+            fuzz_target_file_stem
+        ))
+        .unwrap();
+        convert_pdf_file_to_ps(
+            pdf_document_path.to_str().unwrap(),
+            ps_document_path.to_str().unwrap(),
+        )
+        .unwrap();
+
+        // Remove the creation date from the postscript file by using the `sed -i -e '7d' file.ps` command
+        let command = std::process::Command::new("sed")
+            .arg("-i")
+            .arg("-e")
+            .arg("7d")
+            .arg(ps_document_path.clone())
+            .spawn();
+        command
+            .unwrap()
+            .wait()
+            .map_err(|error| {
+                TraceableError::with_error(
+                    format!(
+                        "Failed to remove creation date from PS document {:?}",
+                        ps_document_path
+                    ),
+                    &error,
+                )
+            })
+            .unwrap();
+
+        // Remove all leftover PDF files
+        let command = std::process::Command::new("rm")
+            .arg(pdf_document_path.clone())
+            .spawn();
+        command
+            .unwrap()
+            .wait()
+            .map_err(|error| {
+                TraceableError::with_error(
+                    format!("Failed to remove PDF document {:?}", pdf_document_path),
+                    &error,
+                )
+            })
+            .unwrap();
+
+        let ps_e_file_path = std::path::PathBuf::from_str(&format!(
+            "fuzz/target_references/{}.ps-e",
+            fuzz_target_file_stem
+        ))
+        .unwrap();
+        let command = std::process::Command::new("rm")
+            .arg(ps_e_file_path.clone())
+            .spawn();
+        command
+            .unwrap()
+            .wait()
+            .map_err(|error| {
+                TraceableError::with_error(
+                    format!("Failed to remove PS-e document {:?}", ps_e_file_path),
+                    &error,
+                )
+            })
+            .unwrap();
     }
 }
 
 #[test]
-fn compare_fuzz_targets_with_reference_pdfs() {
+fn compare_fuzz_targets_with_target_references() {
     let fuzz_targets = std::fs::read_dir("fuzz/fuzz_targets")
         .unwrap()
         .filter(|entry| {
@@ -204,27 +283,110 @@ fn compare_fuzz_targets_with_reference_pdfs() {
         let fuzz_target_path = fuzz_target.unwrap().path();
         let fuzz_target_file_stem = fuzz_target_path.file_stem().unwrap().to_str().unwrap();
 
+        // Load the document from the JSON file
         let document_path = format!("fuzz/fuzz_targets/{}.json", fuzz_target_file_stem);
         let document_content = std::fs::read(document_path.clone()).unwrap();
         let document: textr::document::Document =
             serde_json::from_slice(&document_content).unwrap();
-        let pdf_document_bytes = document
-            .to_pdf()
+
+        // Save the document to a PDF file
+        let pdf_document_path = std::path::PathBuf::from_str(&format!(
+            "fuzz/fuzz_targets_products/{}.pdf",
+            fuzz_target_file_stem
+        ))
+        .unwrap();
+        document.save_to_pdf_file(&pdf_document_path).unwrap();
+        let ps_document_path = std::path::PathBuf::from_str(&format!(
+            "fuzz/fuzz_targets_products/{}.ps",
+            fuzz_target_file_stem
+        ))
+        .unwrap();
+        convert_pdf_file_to_ps(
+            pdf_document_path.to_str().unwrap(),
+            ps_document_path.to_str().unwrap(),
+        )
+        .unwrap();
+
+        // Remove the creation date from the postscript file by using the `sed -i -e '7d' file.ps` command
+        let command = std::process::Command::new("sed")
+            .arg("-i")
+            .arg("-e")
+            .arg("7d")
+            .arg(ps_document_path.clone())
+            .spawn();
+        command
             .unwrap()
-            .save_to_bytes(document.instance_id)
+            .wait()
+            .map_err(|error| {
+                TraceableError::with_error(
+                    format!(
+                        "Failed to remove creation date from PS document {:?}",
+                        ps_document_path
+                    ),
+                    &error,
+                )
+            })
             .unwrap();
+        // Load the PDF document from the PDF file as bytes
+        let ps_document_path = format!("fuzz/fuzz_targets_products/{}.ps", fuzz_target_file_stem);
+        let ps_document_string = std::fs::read_to_string(ps_document_path).unwrap();
 
-        let other_pdf_document_path =
-            format!("fuzz/target_references/{}.pdf", fuzz_target_file_stem);
-        let other_pdf_document_bytes = std::fs::read(other_pdf_document_path.clone()).unwrap();
+        let other_ps_document_path = format!("fuzz/target_references/{}.ps", fuzz_target_file_stem);
+        let other_ps_document_string =
+            std::fs::read_to_string(other_ps_document_path.clone()).unwrap();
 
-        if pdf_document_bytes != other_pdf_document_bytes {
-            panic!(
-                "the document {:?} differs in byte content from its counterpart: {} != {}, they may have been produced in different release modes or just be different files",
-                fuzz_target_file_stem,
-                document_path,
-                other_pdf_document_path
-            );
-        }
+        similar_asserts::assert_eq!(ps_document_string, other_ps_document_string);
+
+        let all_files_path = std::path::PathBuf::from_str(&format!(
+            "fuzz/fuzz_targets_products/{}.*",
+            fuzz_target_file_stem
+        ))
+        .unwrap();
+        let command = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(format!("rm {}", all_files_path.to_str().unwrap()))
+            .spawn();
+        command
+            .unwrap()
+            .wait()
+            .map_err(|error| {
+                TraceableError::with_error(
+                    format!(
+                        "Failed to remove all documents for comparison {:?}",
+                        all_files_path
+                    ),
+                    &error,
+                )
+            })
+            .unwrap();
     }
+}
+
+fn convert_pdf_file_to_ps(pdf_file_path: &str, ps_file_path: &str) -> Result<(), TraceableError> {
+    let pdf_document_path = std::path::PathBuf::from_str(pdf_file_path).map_err(|error| {
+        TraceableError::with_error(
+            format!("Failed to create the PDF document path {:?}", pdf_file_path),
+            &error,
+        )
+    })?;
+    let ps_document_path = std::path::PathBuf::from_str(ps_file_path).map_err(|error| {
+        TraceableError::with_error(
+            format!("Failed to create the PS document path {:?}", pdf_file_path),
+            &error,
+        )
+    })?;
+
+    // Convert the saved PDF file to a postscript file via the command pdf2ps in order to remove the creation date
+    let command = std::process::Command::new("pdf2ps")
+        .arg(pdf_document_path.clone())
+        .arg(ps_document_path.clone())
+        .spawn();
+    command.unwrap().wait().map_err(|error| {
+        TraceableError::with_error(
+            format!("Failed to convert PDF to PS document {:?}", pdf_file_path),
+            &error,
+        )
+    })?;
+
+    Ok(())
 }

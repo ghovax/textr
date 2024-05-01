@@ -22,6 +22,7 @@ owned_ttf_parser = "0.20.0"
 time = "0.3.36"
 nalgebra-glm = "0.18.0"
 unicode-normalization = "0.1.23"
+similar-asserts = "1.5.0"
 
 [profile.release]
 debug = true

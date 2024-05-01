@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser as _;
-use textr::error::TraceableError;
+use textr::{document, error::TraceableError};
 
 #[derive(clap::Parser)]
 struct CliArguments {
@@ -37,5 +37,7 @@ fn main() {
         .unwrap();
     document
         .save_to_pdf_file(&cli_arguments.output_path)
+        .unwrap();
+    document::optimize_pdf_file_with_gs(cli_arguments.output_path.as_os_str().to_str().unwrap())
         .unwrap();
 }

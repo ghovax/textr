@@ -48,7 +48,7 @@ impl TtfFontFace {
             .face()
             .tables()
             .cmap
-            .map(|cmap| cmap.subtables.into_iter().filter(|v| v.is_unicode()));
+            .map(|cmap| cmap.subtables.into_iter().filter(|subtable| subtable.is_unicode()));
         let Some(subtables) = subtables else {
             return HashMap::new();
         };
@@ -365,6 +365,7 @@ impl PdfDocument {
         )?;
 
         let mut gid_list = Vec::<u16>::new();
+        // Normalize the text in the NFC form
         for character in text.nfc() {
             if let Some(glyph_id) = font.ttf_face.glyph_id(character) {
                 gid_list.push(glyph_id);
@@ -570,7 +571,7 @@ impl PdfDocument {
                 )
             })?;
             let (mut resources_page, layer_streams) =
-                page.collect_resources_and_streams(&mut self.inner_document, &unmerged_layers.1);
+                page.collect_resources_and_streams(&mut self.inner_document, &unmerged_layers.1)?;
 
             resources_page.set("Font", Reference(fonts_dictionary_id)); // TODO: There was a Some here, but I do not know where it went
 
@@ -618,8 +619,9 @@ impl PdfDocument {
         );
 
         self.inner_document.prune_objects();
-        self.inner_document.compress();
         self.inner_document.delete_zero_length_streams();
+        self.inner_document.renumber_objects();
+        self.inner_document.compress();
 
         let mut pdf_document_bytes = Vec::new();
         let mut writer = BufWriter::new(&mut pdf_document_bytes);
@@ -674,7 +676,7 @@ impl PdfPage {
         self,
         inner_document: &mut lopdf::Document,
         layers: &[(usize, lopdf::Object)],
-    ) -> (lopdf::Dictionary, Vec<lopdf::Stream>) {
+    ) -> Result<(lopdf::Dictionary, Vec<lopdf::Stream>), TraceableError> {
         let current_layers = layers.iter().map(|layer| layer.1.clone()).collect();
         let (resource_dictionary, ocg_references) = self
             .resources
@@ -694,7 +696,16 @@ impl PdfPage {
                     "BDC",
                     vec![
                         Name("OC".into()),
-                        Name(ocg_references[index].0.clone().into()),
+                        Name(
+                            ocg_references
+                                .get(index)
+                                .ok_or(TraceableError::with_context(
+                                    "Unable to find the index in the OCG references",
+                                ))?
+                                .0
+                                .clone()
+                                .into(),
+                        ),
                     ],
                 ),
             );
@@ -707,7 +718,7 @@ impl PdfPage {
             layer_streams.push(layer_stream);
         }
 
-        (resource_dictionary, layer_streams)
+        Ok((resource_dictionary, layer_streams))
     }
 }
 
@@ -907,10 +918,10 @@ impl Font {
         // Although the following entry is technically not needed, Adobe Reader needs it
         font_descriptor_vector.push(("FontBBox".into(), Array(font_bounding_box)));
 
-        let font_descriptor_vec_id =
+        let font_descriptor_vector_id =
             inner_document.add_object(lopdf::Dictionary::from_iter(font_descriptor_vector));
 
-        font_descriptors.set("FontDescriptor", Reference(font_descriptor_vec_id));
+        font_descriptors.set("FontDescriptor", Reference(font_descriptor_vector_id));
 
         font_vector.push((
             "DescendantFonts".into(),

@@ -140,3 +140,76 @@ impl Document {
         Ok(())
     }
 }
+
+pub fn optimize_pdf_file_with_ps2pdf(pdf_path: &str) -> Result<(), TraceableError> {
+    // Run ps2pdf to optimize the PDF file
+    let child = std::process::Command::new("ps2pdf")
+        .arg(pdf_path)
+        .arg(format!("{}.swp", pdf_path))
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            let status = child.wait().map_err(|error| {
+                TraceableError::with_error(
+                    "Unable to wait for the ps2pdf command execution",
+                    &error,
+                )
+            })?;
+            if !status.success() {
+                return Err(TraceableError::with_context(format!(
+                    "ps2pdf failed with status {:?}",
+                    status
+                )));
+            }
+            std::fs::rename(format!("{}.swp", pdf_path), pdf_path).map_err(|error| {
+                TraceableError::with_error("Unable to rename the optimized PDF file", &error)
+            })?;
+        }
+        Err(error) => {
+            return Err(TraceableError::with_error(
+                "Unable to run the ps2pdf command",
+                &error,
+            ));
+        }
+    }
+
+    Ok(())
+}
+pub fn optimize_pdf_file_with_gs(pdf_path: &str) -> Result<(), TraceableError> {
+    // Run ghostscript to optimize the PDF file
+    // $ gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile=output.pdf input.pdf
+    let child = std::process::Command::new("gs")
+        .arg("-sDEVICE=pdfwrite")
+        .arg("-dCompatibilityLevel=1.5")
+        .arg("-dPDFSETTINGS=/ebook")
+        .arg("-dNOPAUSE")
+        .arg("-dQUIET")
+        .arg("-dBATCH")
+        .arg(format!("-sOutputFile={}.swp", pdf_path))
+        .arg(pdf_path)
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            let status = child.wait().map_err(|error| {
+                TraceableError::with_error("Unable to wait for the gs command execution", &error)
+            })?;
+            if !status.success() {
+                return Err(TraceableError::with_context(format!(
+                    "gs failed with status {:?}",
+                    status
+                )));
+            }
+            std::fs::rename(format!("{}.swp", pdf_path), pdf_path).map_err(|error| {
+                TraceableError::with_error("Unable to rename the optimized PDF file", &error)
+            })?;
+        }
+        Err(error) => {
+            return Err(TraceableError::with_error(
+                "Unable to run the gs command",
+                &error,
+            ));
+        }
+    }
+
+    Ok(())
+}
