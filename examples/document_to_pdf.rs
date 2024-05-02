@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser as _;
-use textr::{document, error::TraceableError};
+use textr::{document, error::ContextError};
 
 #[derive(clap::Parser)]
 struct CliArguments {
@@ -15,7 +15,7 @@ fn main() {
     let cli_arguments = CliArguments::parse();
     let document_content = std::fs::read(cli_arguments.document_path.clone())
         .map_err(|error| {
-            TraceableError::with_error(
+            ContextError::with_error(
                 format!(
                     "Failed to read JSON document {:?}",
                     cli_arguments.document_path
@@ -26,7 +26,7 @@ fn main() {
         .unwrap();
     let document: textr::document::Document = serde_json::from_slice(&document_content)
         .map_err(|error| {
-            TraceableError::with_error(
+            ContextError::with_error(
                 format!(
                     "Failed to parse JSON document {:?}",
                     cli_arguments.document_path

@@ -2,49 +2,49 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A struct that represents an error with a context and possibly the propagated source error.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TraceableError {
+pub struct ContextError {
     pub context: String,
-    pub source: Option<String>,
+    pub source_error: Option<String>,
 }
 
-impl std::fmt::Display for TraceableError {
+impl std::fmt::Display for ContextError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.source {
-            Some(source) => write!(
+        match &self.source_error {
+            Some(source_error) => write!(
                 formatter,
                 "{}: {}",
                 self.context,
-                minimize_first_letter(source.to_string())
+                minimize_first_letter(source_error.to_string()),
             ),
             None => write!(formatter, "{}", self.context),
         }
     }
 }
 
-impl std::error::Error for TraceableError {}
+impl std::error::Error for ContextError {}
 
-impl TraceableError {
-    pub fn with_context<S: Into<String>>(context: S) -> TraceableError {
-        TraceableError {
+impl ContextError {
+    /// Create a new `ContextError`` with the given context.
+    pub fn with_context<S: Into<String>>(context: S) -> ContextError {
+        ContextError {
             context: context.into(),
-            source: None,
+            source_error: None,
         }
     }
 
-    pub fn with_error<S: Into<String>>(
-        context: S,
-        source: &dyn std::error::Error,
-    ) -> TraceableError {
-        TraceableError {
+    /// Create a new `ContextError`` with the given context and source error.
+    pub fn with_error<S: Into<String>>(context: S, error: &dyn std::error::Error) -> ContextError {
+        ContextError {
             context: context.into(),
-            source: Some(source.to_string()),
+            source_error: Some(error.to_string()),
         }
     }
 }
 
 /// Minimizes the first letter of a string, it is used for standardizing the error message.
-pub(crate) fn minimize_first_letter(string: String) -> String {
+fn minimize_first_letter(string: String) -> String {
     let mut characters = string.chars();
     match characters.next() {
         None => String::new(),

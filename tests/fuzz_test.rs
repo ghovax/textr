@@ -3,7 +3,7 @@ use std::{io::Write as _, ops::Range, str::FromStr as _};
 use image::{Rgba, RgbaImage};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::Serialize as _;
-use textr::error::TraceableError;
+use textr::error::ContextError;
 
 struct FuzzTargetsGeneratorConfiguration {
     documents_to_generate: u32,
@@ -181,7 +181,7 @@ fn generate_target_references_from_fuzz_targets() {
         let document_content =
             std::fs::read(format!("fuzz/fuzz_targets/{}.json", fuzz_target_file_stem))
                 .map_err(|error| {
-                    TraceableError::with_error(
+                    ContextError::with_error(
                         format!("Failed to read JSON document {:?}", fuzz_target_file_stem),
                         &error,
                     )
@@ -189,7 +189,7 @@ fn generate_target_references_from_fuzz_targets() {
                 .unwrap();
         let document: textr::document::Document = serde_json::from_slice(&document_content)
             .map_err(|error| {
-                TraceableError::with_error(
+                ContextError::with_error(
                     format!("Failed to parse JSON document {:?}", fuzz_target_file_stem),
                     &error,
                 )
@@ -224,7 +224,7 @@ fn generate_target_references_from_fuzz_targets() {
             .unwrap()
             .wait()
             .map_err(|error| {
-                TraceableError::with_error(
+                ContextError::with_error(
                     format!(
                         "Failed to remove creation date from PS document {:?}",
                         ps_document_path
@@ -242,7 +242,7 @@ fn generate_target_references_from_fuzz_targets() {
             .unwrap()
             .wait()
             .map_err(|error| {
-                TraceableError::with_error(
+                ContextError::with_error(
                     format!("Failed to remove PDF document {:?}", pdf_document_path),
                     &error,
                 )
@@ -261,7 +261,7 @@ fn generate_target_references_from_fuzz_targets() {
             .unwrap()
             .wait()
             .map_err(|error| {
-                TraceableError::with_error(
+                ContextError::with_error(
                     format!("Failed to remove PS-e document {:?}", ps_e_file_path),
                     &error,
                 )
@@ -318,7 +318,7 @@ fn compare_fuzz_targets_with_target_references() {
             .unwrap()
             .wait()
             .map_err(|error| {
-                TraceableError::with_error(
+                ContextError::with_error(
                     format!(
                         "Failed to remove creation date from PS document {:?}",
                         ps_document_path
@@ -350,7 +350,7 @@ fn compare_fuzz_targets_with_target_references() {
             .unwrap()
             .wait()
             .map_err(|error| {
-                TraceableError::with_error(
+                ContextError::with_error(
                     format!(
                         "Failed to remove all documents for comparison {:?}",
                         all_files_path
@@ -362,15 +362,15 @@ fn compare_fuzz_targets_with_target_references() {
     }
 }
 
-fn convert_pdf_file_to_ps(pdf_file_path: &str, ps_file_path: &str) -> Result<(), TraceableError> {
+fn convert_pdf_file_to_ps(pdf_file_path: &str, ps_file_path: &str) -> Result<(), ContextError> {
     let pdf_document_path = std::path::PathBuf::from_str(pdf_file_path).map_err(|error| {
-        TraceableError::with_error(
+        ContextError::with_error(
             format!("Failed to create the PDF document path {:?}", pdf_file_path),
             &error,
         )
     })?;
     let ps_document_path = std::path::PathBuf::from_str(ps_file_path).map_err(|error| {
-        TraceableError::with_error(
+        ContextError::with_error(
             format!("Failed to create the PS document path {:?}", pdf_file_path),
             &error,
         )
@@ -382,7 +382,7 @@ fn convert_pdf_file_to_ps(pdf_file_path: &str, ps_file_path: &str) -> Result<(),
         .arg(ps_document_path.clone())
         .spawn();
     command.unwrap().wait().map_err(|error| {
-        TraceableError::with_error(
+        ContextError::with_error(
             format!("Failed to convert PDF to PS document {:?}", pdf_file_path),
             &error,
         )

@@ -9,28 +9,39 @@ use std::{
 use time::OffsetDateTime;
 use unicode_normalization::UnicodeNormalization as _;
 
-use crate::error::TraceableError;
+use crate::error::ContextError;
 
+/// The (insofar) relevant vertical metrics of a font.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FontMetrics {
+    /// The ascent of the font.
     pub ascent: i16,
+    /// The descent of the font.
     pub descent: i16,
+    /// The number of units per em of the font.
     pub units_per_em: u16,
 }
 
+/// The (insofar) relevant metrics associated to a single glyph of a font.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GlyphMetrics {
+    /// The width of the glyph.
     pub width: u32,
+    /// The height of the glyph.
     pub height: u32,
 }
 
+/// A font face loaded from a TTF font, together with its measure of units per em.
 #[derive(Clone, Debug)]
 struct TtfFontFace {
+    /// The underlying font face which is represented through the `ttf_parser` crate.
     inner: std::sync::Arc<owned_ttf_parser::OwnedFace>,
+    /// The number of units per em of the font face.
     units_per_em: u16,
 }
 
 impl TtfFontFace {
+    /// Retrieve the font metrics from the associated font face.
     fn font_metrics(&self) -> FontMetrics {
         FontMetrics {
             ascent: self.face().ascender(),
@@ -39,67 +50,98 @@ impl TtfFontFace {
         }
     }
 
+    /// Retrieve the glyph ID of a specific codepoint, which in our case is just a `char`.
     fn glyph_id(&self, codepoint: char) -> Option<u16> {
-        self.face().glyph_index(codepoint).map(|id| id.0)
+        self.face()
+            .glyph_index(codepoint)
+            .map(|glyph_id| glyph_id.0)
     }
 
+    /// Retrieve the mapping between the glyph IDs and the characters (codepoints), that specifically
+    /// contains exactly the number of unicode glyphs present in the font.
     fn glyph_ids(&self) -> HashMap<u16, char> {
-        let subtables = self
-            .face()
-            .tables()
-            .cmap
-            .map(|cmap| cmap.subtables.into_iter().filter(|subtable| subtable.is_unicode()));
-        let Some(subtables) = subtables else {
+        // Retrieve all the unicode subtables of the font face
+        let font_subtables = self.face().tables().cmap.map(|cmap| {
+            cmap.subtables
+                .into_iter()
+                .filter(|font_subtable| font_subtable.is_unicode())
+        });
+        // If no suitable subtables have been found, then return an empty association between
+        // glyph IDs and characters
+        let Some(font_subtables) = font_subtables else {
             return HashMap::new();
         };
-        let mut map = HashMap::with_capacity(self.face().number_of_glyphs().into());
-        for subtable in subtables {
-            subtable.codepoints(|codepoint| {
+
+        // Once the subtables have been fetched, creates an association between the glyph IDs
+        // and the characters (codepoints) that contains the number of glyphs of the font face
+        let mut gid_to_codepoint_map =
+            HashMap::with_capacity(self.face().number_of_glyphs().into());
+        for font_subtable in font_subtables {
+            font_subtable.codepoints(|codepoint| {
                 use std::convert::TryFrom as _;
 
                 if let Ok(character) = char::try_from(codepoint) {
-                    if let Some(glyph_index) =
-                        subtable.glyph_index(codepoint).filter(|index| index.0 > 0)
+                    // For each character in each subtable, if it is a valid UTF-8 codepoint, then
+                    // retrieve its glyph index only if it is positive and insert it in to the
+                    // association between glyph IDs and characters
+                    if let Some(glyph_index) = font_subtable
+                        .glyph_index(codepoint)
+                        .filter(|index| index.0 > 0)
                     {
-                        map.entry(glyph_index.0).or_insert(character);
+                        gid_to_codepoint_map
+                            .entry(glyph_index.0)
+                            .or_insert(character);
                     }
                 }
             })
         }
-        map
+
+        gid_to_codepoint_map
     }
 
+    /// Retrieve the total number of glyphs present in the font face.
     fn glyph_count(&self) -> u16 {
         self.face().number_of_glyphs()
     }
 
+    /// Attempt to calculate the metrics of a glyph from the associated glyph ID, taken as input.
     fn glyph_metrics(&self, glyph_id: u16) -> Option<GlyphMetrics> {
         let glyph_id = owned_ttf_parser::GlyphId(glyph_id);
+
         if let Some(width) = self.face().glyph_hor_advance(glyph_id) {
             let width = width as u32;
+            // The height of the glyph is corrected by employing the descender vertical metric
+            // of the font face (this is supposedly valid only for horizontally-laid fonts).
             let height = self
                 .face()
                 .glyph_bounding_box(glyph_id)
                 .map(|bounding_box| {
                     bounding_box.y_max - bounding_box.y_min - self.face().descender()
                 })
+                // If it fails to retrieve the height, default to 1000. This is not a problem
+                // for us as we employ properly-built fonts from the CMU family.
                 .unwrap_or(1000) as u32;
+
             Some(GlyphMetrics { width, height })
         } else {
+            // If it cannot find the horizontal glyph advance, return accordingly nothing
             None
         }
     }
 
-    pub fn from_vec(data: &[u8]) -> Result<Self, TraceableError> {
+    /// Constructs a font face from the underlying raw data extracted from the TTF font file.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, ContextError> {
         let face = OwnedFace::from_vec(data.to_vec(), 0)
-            .map_err(|error| TraceableError::with_error("Failed to parse font", &error))?;
+            .map_err(|error| ContextError::with_error("Failed to parse font", &error))?;
         let units_per_em = face.as_face_ref().units_per_em();
+
         Ok(Self {
             inner: std::sync::Arc::new(face),
             units_per_em,
         })
     }
 
+    /// Retrieve the underlying font face as a reference.
     fn face(&self) -> &Face<'_> {
         self.inner.as_face_ref()
     }
@@ -133,7 +175,7 @@ impl From<PdfLayer> for lopdf::Stream {
             Dictionary::new(),
             stream_content
                 .encode()
-                .map_err(|error| TraceableError::with_error("Failed to encode PDF content", &error))
+                .map_err(|error| ContextError::with_error("Failed to encode PDF content", &error))
                 .unwrap(),
         )
         .with_compression(true)
@@ -310,12 +352,12 @@ impl PdfDocument {
         (page_index, layer_index_in_page)
     }
 
-    pub fn add_font(&mut self, font_path: &Path) -> Result<usize, TraceableError> {
+    pub fn add_font(&mut self, font_path: &Path) -> Result<usize, ContextError> {
         let font_bytes = std::fs::read(font_path)
-            .map_err(|error| TraceableError::with_error("Failed to read font", &error))?;
+            .map_err(|error| ContextError::with_error("Failed to read font", &error))?;
 
-        let ttf_font_face = TtfFontFace::from_vec(&font_bytes)
-            .map_err(|error| TraceableError::with_error("Failed to parse font", &error))?;
+        let ttf_font_face = TtfFontFace::from_bytes(&font_bytes)
+            .map_err(|error| ContextError::with_error("Failed to parse font", &error))?;
         let font = Font {
             bytes: font_bytes,
             ttf_face: ttf_font_face,
@@ -339,7 +381,7 @@ impl PdfDocument {
         font_index: usize,
         font_size: f32,
         caret_position: [f32; 2],
-    ) -> Result<(), TraceableError> {
+    ) -> Result<(), ContextError> {
         let font = self.get_font(font_index)?.1.clone(); // TODO: I shouldn't have to clone the font data
         self.add_operations_to_layer_in_page(
             layer_index,
@@ -396,7 +438,7 @@ impl PdfDocument {
         Ok(())
     }
 
-    pub fn save_to_bytes(mut self, instance_id: String) -> Result<Vec<u8>, TraceableError> {
+    pub fn save_to_bytes(mut self, instance_id: String) -> Result<Vec<u8>, ContextError> {
         let pages_id = self.inner_document.new_object_id();
 
         use lopdf::Object::*;
@@ -566,7 +608,7 @@ impl PdfDocument {
             // Will collect the resources needed for rendering this page
             let unmerged_layers = ocg_list.iter().find(|ocg| ocg.0 - 1 == index).ok_or({
                 let comparisons = ocg_list.iter().map(|ocg| ocg.0).collect::<Vec<_>>();
-                TraceableError::with_context(
+                ContextError::with_context(
                     format!("Unable to collect the resources needed for rendering the page: can't find {:?} in {:?}", index, comparisons),
                 )
             })?;
@@ -626,7 +668,7 @@ impl PdfDocument {
         let mut pdf_document_bytes = Vec::new();
         let mut writer = BufWriter::new(&mut pdf_document_bytes);
         self.inner_document.save_to(&mut writer).map_err(|error| {
-            TraceableError::with_error("Error while saving the PDF document to bytes", &error)
+            ContextError::with_error("Error while saving the PDF document to bytes", &error)
         })?;
         mem::drop(writer);
 
@@ -676,7 +718,7 @@ impl PdfPage {
         self,
         inner_document: &mut lopdf::Document,
         layers: &[(usize, lopdf::Object)],
-    ) -> Result<(lopdf::Dictionary, Vec<lopdf::Stream>), TraceableError> {
+    ) -> Result<(lopdf::Dictionary, Vec<lopdf::Stream>), ContextError> {
         let current_layers = layers.iter().map(|layer| layer.1.clone()).collect();
         let (resource_dictionary, ocg_references) = self
             .resources
@@ -699,7 +741,7 @@ impl PdfPage {
                         Name(
                             ocg_references
                                 .get(index)
-                                .ok_or(TraceableError::with_context(
+                                .ok_or(ContextError::with_context(
                                     "Unable to find the index in the OCG references",
                                 ))?
                                 .0
@@ -939,16 +981,16 @@ impl PdfDocument {
         layer_index: usize,
         page_index: usize,
         operations: Vec<lopdf::content::Operation>,
-    ) -> Result<(), TraceableError> {
+    ) -> Result<(), ContextError> {
         let pdf_layer_reference = self.get_mut_layer_in_page(layer_index, page_index)?;
         pdf_layer_reference.operations.extend(operations);
 
         Ok(())
     }
-    fn get_font(&mut self, font_index: usize) -> Result<&((u32, u16), Font), TraceableError> {
+    fn get_font(&mut self, font_index: usize) -> Result<&((u32, u16), Font), ContextError> {
         self.fonts
             .get(&format!("F{font_index}"))
-            .ok_or(TraceableError::with_context(format!(
+            .ok_or(ContextError::with_context(format!(
                 "Failed to find font {}",
                 font_index
             )))
@@ -958,22 +1000,21 @@ impl PdfDocument {
         &mut self,
         layer_index: usize,
         page_index: usize,
-    ) -> Result<&mut PdfLayer, TraceableError> {
+    ) -> Result<&mut PdfLayer, ContextError> {
         let pdf_page = self
             .pages
             .get_mut(page_index)
-            .ok_or(TraceableError::with_context(format!(
+            .ok_or(ContextError::with_context(format!(
                 "Failed to find the page with index {}",
                 page_index
             )))?;
-        let pdf_layer =
-            pdf_page
-                .layers
-                .get_mut(layer_index)
-                .ok_or(TraceableError::with_context(format!(
-                    "Failed to find the layer with index {}",
-                    layer_index
-                )))?;
+        let pdf_layer = pdf_page
+            .layers
+            .get_mut(layer_index)
+            .ok_or(ContextError::with_context(format!(
+                "Failed to find the layer with index {}",
+                layer_index
+            )))?;
 
         Ok(pdf_layer)
     }

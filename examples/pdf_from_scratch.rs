@@ -1,5 +1,5 @@
 use std::{io::Write as _, path::Path};
-use textr::{document, error::TraceableError, pdf::PdfDocument};
+use textr::{document, error::ContextError, pdf::PdfDocument};
 
 fn main() {
     env_logger::builder()
@@ -28,13 +28,13 @@ fn main() {
     // Note that all documents tend to be heavy so they need to be processed by ps2pdf to be optimized further
     let pdf_document_bytes = pdf_document.save_to_bytes(instance_id.clone()).unwrap();
     let pdf_file_path = format!("assets/{}.pdf", instance_id);
-    let mut pdf_file = std::fs::File::create(pdf_file_path)
-        .map_err(|error| TraceableError::with_error("Failed to create the output file", &error))
+    let mut pdf_file = std::fs::File::create(pdf_file_path.clone())
+        .map_err(|error| ContextError::with_error("Failed to create the output file", &error))
         .unwrap();
     pdf_file
         .write_all(&pdf_document_bytes)
-        .map_err(|error| TraceableError::with_error("Failed to save the output file", &error))
+        .map_err(|error| ContextError::with_error("Failed to save the output file", &error))
         .unwrap();
 
-    document::optimize_pdf_file_with_gs(&format!("assets/{}.pdf", instance_id)).unwrap();
+    document::optimize_pdf_file_with_gs(&pdf_file_path).unwrap();
 }
