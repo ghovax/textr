@@ -291,13 +291,13 @@ fn compare_fuzz_targets_with_target_references() {
 
         // Save the document to a PDF file
         let pdf_document_path = std::path::PathBuf::from_str(&format!(
-            "fuzz/fuzz_targets_products/{}.pdf",
+            "fuzz/fuzz_targets/{}.pdf",
             fuzz_target_file_stem
         ))
         .unwrap();
         document.save_to_pdf_file(&pdf_document_path).unwrap();
         let ps_document_path = std::path::PathBuf::from_str(&format!(
-            "fuzz/fuzz_targets_products/{}.ps",
+            "fuzz/fuzz_targets/{}.ps",
             fuzz_target_file_stem
         ))
         .unwrap();
@@ -328,7 +328,7 @@ fn compare_fuzz_targets_with_target_references() {
             })
             .unwrap();
         // Load the PDF document from the PDF file as bytes
-        let ps_document_path = format!("fuzz/fuzz_targets_products/{}.ps", fuzz_target_file_stem);
+        let ps_document_path = format!("fuzz/fuzz_targets/{}.ps", fuzz_target_file_stem);
         let ps_document_string = std::fs::read_to_string(ps_document_path).unwrap();
 
         let other_ps_document_path = format!("fuzz/target_references/{}.ps", fuzz_target_file_stem);
@@ -338,8 +338,8 @@ fn compare_fuzz_targets_with_target_references() {
         similar_asserts::assert_eq!(ps_document_string, other_ps_document_string);
 
         let all_files_path = std::path::PathBuf::from_str(&format!(
-            "fuzz/fuzz_targets_products/{}.*",
-            fuzz_target_file_stem
+            "fuzz/fuzz_targets/{}.pdf fuzz/fuzz_targets/{}.ps fuzz/fuzz_targets/{}.ps-e",
+            fuzz_target_file_stem, fuzz_target_file_stem, fuzz_target_file_stem
         ))
         .unwrap();
         let command = std::process::Command::new("bash")
