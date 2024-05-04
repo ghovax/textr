@@ -44,7 +44,7 @@ pub struct Document {
 pub enum Operation {
     /// Represents a piece of text to be rendered in the PDF document.
     #[serde(rename_all = "camelCase")]
-    UnicodeText {
+    WriteUnicodeText {
         /// The color of the text.
         color: [f32; 3],
         /// The position of the text.
@@ -53,7 +53,7 @@ pub enum Operation {
         text_string: String,
         /// The font size of the text.
         font_size: f32,
-        /// The font index of the text, use the in order to retrieve the proper font.
+        /// The font index of the text, used in order to retrieve the proper font.
         /// This is a low-level information and the proper index for the specific use-case
         /// can be calculated by knowing in which order the fonts have been loaded into the document.
         font_index: usize,
@@ -75,12 +75,14 @@ impl Document {
     ///
     /// * `document_path` - The path to the JSON document.
     pub fn from_path(document_path: &PathBuf) -> Result<Self, ContextError> {
+        // Read the document content from the given path into a string
         let document_content = std::fs::read_to_string(document_path).map_err(|error| {
             ContextError::with_error(
                 format!("Unable to read the document {:?}", document_path),
                 &error,
             )
         })?;
+        // Deserialize the document content into the `Document` struct
         let document: Self = serde_json::from_str(&document_content).map_err(|error| {
             ContextError::with_error(
                 format!("Unable to parse the document {:?}", document_path),
@@ -96,9 +98,11 @@ impl Document {
     /// then by iterating over the operations present in the document in order to map them to the associated
     /// operation in a PDF document. This is a high-level function that hides the low-level requirements
     /// and procedures needed for constructing a PDF document by calling the functions defined for `PdfDocument`.
-    pub fn to_pdf(&self) -> Result<PdfDocument, ContextError> {
+    pub fn to_pdf_document(&self) -> Result<PdfDocument, ContextError> {
+        // Create a PDF document with the identifier of the document
         let mut pdf_document = PdfDocument::new(self.document_id.clone());
 
+        // Load the built-in fonts present in the `fonts` directory of the CMU family
         let fonts_directory = std::fs::read_dir("fonts/computer-modern")
             .map_err(|error| {
                 ContextError::with_error("Failed to read the fonts directory", &error)
@@ -120,8 +124,9 @@ impl Document {
             .filter(|font_path| font_path.path().extension() == Some("ttf".as_ref()))
             .map(|font_path| font_path.path())
             .collect::<Vec<_>>(); // Need to collect it because of a borrowing requirements
-
+                                  // Sort the font paths in order to load them in the correct order
         font_paths.sort();
+        // Load the math font as well
         let math_font_path = "fonts/lm-math/opentype/latinmodern-math.otf";
         font_paths.push(PathBuf::from_str(math_font_path).map_err(|error| {
             ContextError::with_error(
@@ -130,16 +135,27 @@ impl Document {
             )
         })?);
 
+        // Add the fonts to the document one after the other
         for font_path in font_paths {
             let _font_index = pdf_document.add_font(&font_path).unwrap();
         }
 
+        // Currently the only states that this PDF-writing function is handling is the current index of the page and of the
+        // layer in the page, which are needed to write the text to the layer in the page
+        // Any user of this library would anyway still need to take care of the indices
         let mut current_page_index = 0;
         let mut current_layer_index_in_page = 0;
 
+        // Iterate over the operations in the document in order to map them to the associated operation
+        // Note that the operations are iterated over in the order they are present in the document,
+        // which is important for the correctness of the PDF document
+        //
+        // Also, the mapping is one to one because the operations are mapped to the operations in the PDF document
+        // For instance, the `AppendNewPage` operation is mapped to the `add_page_with_layer` function of the `PdfDocument`
+        // struct and the operation `WriteUnicodeText` is mapped to the function `write_text_to_layer_in_page`
         for operation in self.operations.iter() {
             match operation {
-                Operation::UnicodeText {
+                Operation::WriteUnicodeText {
                     color,
                     position,
                     text_string,
@@ -183,7 +199,9 @@ impl Document {
     /// * `path` - The path to the output PDF file.
     pub fn save_to_pdf_file(&self, path: &Path) -> Result<(), ContextError> {
         // Note that all documents tend to be heavy so they need to be processed by ps2pdf to be optimized further
-        let pdf_document_bytes = self.to_pdf()?.save_to_bytes(self.instance_id.clone())?;
+        let pdf_document_bytes = self
+            .to_pdf_document()?
+            .save_to_bytes(self.instance_id.clone())?;
         let mut pdf_file = std::fs::File::create(path).map_err(|error| {
             ContextError::with_error("Failed to create the output file", &error)
         })?;
@@ -194,97 +212,4 @@ impl Document {
 
         Ok(())
     }
-}
-
-/// This function is used to optimize the PDF file by running ps2pdf on it.
-/// An intermediate file with the `.swp` extension is created and then renamed immediately
-/// to the expected one, which is the given path.
-///
-/// # Arguments
-///
-/// * `pdf_path` - The path to the PDF file to be optimized.
-///
-/// This is procedure of creating an intermediate file is a workaround to a limitation of the shell.
-pub fn optimize_pdf_file_with_ps2pdf(pdf_path: &str) -> Result<(), ContextError> {
-    // Run ps2pdf to optimize the PDF file
-    let child = std::process::Command::new("ps2pdf")
-        .arg(pdf_path)
-        .arg(format!("{}.swp", pdf_path))
-        .spawn();
-    match child {
-        Ok(mut child) => {
-            let status = child.wait().map_err(|error| {
-                ContextError::with_error("Unable to wait for the ps2pdf command execution", &error)
-            })?;
-            if !status.success() {
-                return Err(ContextError::with_context(format!(
-                    "ps2pdf failed with status {:?}",
-                    status
-                )));
-            }
-            std::fs::rename(format!("{}.swp", pdf_path), pdf_path).map_err(|error| {
-                ContextError::with_error("Unable to rename the optimized PDF file", &error)
-            })?;
-        }
-        Err(error) => {
-            return Err(ContextError::with_error(
-                "Unable to run the ps2pdf command",
-                &error,
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-/// This function is used to optimize the PDF file by running ghostscript on it. The command which is run
-/// is the following:
-///
-/// ```bash
-/// $ gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile=output.pdf input.pdf
-/// ```
-///
-/// What we do though is to create an intermediate `.swp` file and then rename it to the expected one.
-/// This is procedure of creating an intermediate file is a workaround to a limitation of the shell.
-///
-/// # Arguments
-///
-/// * `pdf_path` - The path to the PDF file to be optimized.
-pub fn optimize_pdf_file_with_gs(pdf_path: &str) -> Result<(), ContextError> {
-    // Run ghostscript to optimize the PDF file
-    // $ gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile=output.pdf input.pdf
-    let child = std::process::Command::new("gs")
-        .arg("-sDEVICE=pdfwrite")
-        .arg("-dCompatibilityLevel=1.5")
-        .arg("-dPDFSETTINGS=/ebook")
-        .arg("-dNOPAUSE")
-        .arg("-dQUIET")
-        .arg("-dBATCH")
-        .arg(format!("-sOutputFile={}.swp", pdf_path))
-        .arg(pdf_path)
-        .spawn();
-    match child {
-        Ok(mut child) => {
-            let status = child.wait().map_err(|error| {
-                ContextError::with_error("Unable to wait for the gs command execution", &error)
-            })?;
-            if !status.success() {
-                return Err(ContextError::with_context(format!(
-                    "gs failed with status {:?}",
-                    status
-                )));
-            }
-            std::fs::rename(format!("{}.swp", pdf_path), pdf_path).map_err(|error| {
-                ContextError::with_error("Unable to rename the optimized PDF file", &error)
-            })?;
-        }
-        Err(error) => {
-            return Err(ContextError::with_error(
-                "Unable to run the gs command",
-                &error,
-            ));
-        }
-    }
-
-    Ok(())
 }

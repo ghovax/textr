@@ -147,14 +147,189 @@ impl TtfFontFace {
     }
 }
 
+/// A font loaded from a TTF font, together with its measure of units per em, the byte data
+/// data was loaded from and an identifier for the font face.
 #[derive(Debug, Clone)]
-struct Font {
+pub struct Font {
+    /// The byte data the font was loaded from.
     bytes: Vec<u8>,
+    /// The actual font face, together with its measure of units per em.
     ttf_face: TtfFontFace,
+    /// The identifier of the font face.
     face_identifier: String,
 }
 
-/// One layer of PDF data.
+impl Font {
+    fn insert_into_document(&self, inner_document: &mut lopdf::Document) -> lopdf::Dictionary {
+        use lopdf::Object::*;
+        let face_metrics = self.ttf_face.font_metrics();
+
+        let font_stream = lopdf::Stream::new(
+            lopdf::Dictionary::from_iter(vec![("Length1", Integer(self.bytes.len() as i64))]),
+            self.bytes.clone(),
+        )
+        .with_compression(true);
+
+        // Begin stting required font attributes
+        let mut font_vector: Vec<(::std::string::String, lopdf::Object)> = vec![
+            ("Type".into(), Name("Font".into())),
+            ("Subtype".into(), Name("Type0".into())),
+            (
+                "BaseFont".into(),
+                Name(self.face_identifier.clone().into_bytes()),
+            ),
+            // Identity-H for horizontal writing, Identity-V for vertical writing
+            ("Encoding".into(), Name("Identity-H".into())),
+            // Missing DescendantFonts and ToUnicode
+        ];
+
+        let mut font_descriptor_vector: Vec<(::std::string::String, lopdf::Object)> = vec![
+            ("Type".into(), Name("FontDescriptor".into())),
+            (
+                "FontName".into(),
+                Name(self.face_identifier.clone().into_bytes()),
+            ),
+            ("Ascent".into(), Integer(i64::from(face_metrics.ascent))),
+            ("Descent".into(), Integer(i64::from(face_metrics.descent))),
+            ("CapHeight".into(), Integer(i64::from(face_metrics.ascent))),
+            ("ItalicAngle".into(), Integer(0)),
+            ("Flags".into(), Integer(32)),
+            ("StemV".into(), Integer(80)),
+        ];
+
+        // Maximum height of a single character in the font
+        let mut maximum_character_height = 0;
+        // Total width of all characters
+        let mut total_width = 0;
+        // Widths (or heights, depends on self.vertical_writing) of the individual characters, indexed by glyph id
+        let mut character_widths = Vec::<(u32, u32)>::new();
+
+        // Glyph IDs - (Unicode IDs - character width, character height)
+        let mut cmap = BTreeMap::<u32, (u32, u32, u32)>::new();
+        cmap.insert(0, (0, 1000, 1000));
+
+        for (glyph_id, character) in self.ttf_face.glyph_ids() {
+            if let Some(glyph_metrics) = self.ttf_face.glyph_metrics(glyph_id) {
+                if glyph_metrics.height > maximum_character_height {
+                    maximum_character_height = glyph_metrics.height;
+                }
+
+                total_width += glyph_metrics.width;
+                cmap.insert(
+                    glyph_id as u32,
+                    (character as u32, glyph_metrics.width, glyph_metrics.height),
+                );
+            }
+        }
+
+        let mut current_first_bit: u16 = 0; // Current first bit of the glyph id (0x10 or 0x12) for example
+
+        let mut all_cmap_blocks = Vec::new();
+
+        {
+            let mut current_cmap_block = Vec::new();
+
+            for (glyph_id, unicode_width_tuple) in &cmap {
+                if (*glyph_id >> 8) as u16 != current_first_bit || current_cmap_block.len() >= 100 {
+                    // End the current (beginbfchar endbfchar) block
+                    all_cmap_blocks.push(current_cmap_block.clone());
+                    current_cmap_block = Vec::new();
+                    current_first_bit = (*glyph_id >> 8) as u16;
+                }
+
+                let (unicode, width, _) = *unicode_width_tuple;
+                current_cmap_block.push((*glyph_id, unicode));
+                character_widths.push((*glyph_id, width));
+            }
+
+            all_cmap_blocks.push(current_cmap_block);
+        }
+
+        let cid_to_unicode_map =
+            generate_cid_to_unicode_map(self.face_identifier.clone(), all_cmap_blocks);
+        let cid_to_unicode_map_stream = lopdf::Stream::new(
+            lopdf::Dictionary::new(),
+            cid_to_unicode_map.as_bytes().to_vec(),
+        );
+        let cid_to_unicode_map_stream_id = inner_document.add_object(cid_to_unicode_map_stream);
+
+        let mut widths_list = Vec::<Object>::new();
+        let mut current_low_gid = 0;
+        let mut current_high_gid = 0;
+        let mut current_width_vector = Vec::<Object>::new();
+
+        // Scale the font width so that it sort-of fits into an 1000 unit square
+        let percentage_font_scaling = 1000.0 / (face_metrics.units_per_em as f32);
+
+        for gid in 0..self.ttf_face.glyph_count() {
+            if let Some(GlyphMetrics { width, .. }) = self.ttf_face.glyph_metrics(gid) {
+                if gid == current_high_gid {
+                    current_width_vector
+                        .push(Integer((width as f32 * percentage_font_scaling) as i64));
+                    current_high_gid += 1;
+                } else {
+                    widths_list.push(Integer(current_low_gid as i64));
+                    widths_list.push(Array(std::mem::take(&mut current_width_vector)));
+
+                    current_width_vector
+                        .push(Integer((width as f32 * percentage_font_scaling) as i64));
+                    current_low_gid = gid;
+                    current_high_gid = gid + 1;
+                }
+            } else {
+                continue;
+            }
+        }
+        // Push the last widths, because the loop is delayed by one iteration
+        widths_list.push(Integer(current_low_gid as i64));
+        widths_list.push(Array(std::mem::take(&mut current_width_vector)));
+
+        let mut font_descriptors = lopdf::Dictionary::from_iter(vec![
+            ("Type", Name("Font".into())),
+            ("Subtype", Name("CIDFontType2".into())),
+            ("BaseFont", Name(self.face_identifier.clone().into())),
+            (
+                "CIDSystemInfo",
+                Dictionary(lopdf::Dictionary::from_iter(vec![
+                    ("Registry", String("Adobe".into(), StringFormat::Literal)),
+                    ("Ordering", String("Identity".into(), StringFormat::Literal)),
+                    ("Supplement", Integer(0)),
+                ])),
+            ),
+            ("W", Array(widths_list)),
+            ("DW", Integer(1000)),
+        ]);
+
+        let font_bounding_box = vec![
+            Integer(0),
+            Integer(maximum_character_height as i64),
+            Integer(total_width as i64),
+            Integer(maximum_character_height as i64),
+        ];
+        font_descriptor_vector.push((
+            "FontFile2".into(),
+            Reference(inner_document.add_object(font_stream)),
+        ));
+
+        // Although the following entry is technically not needed, Adobe Reader needs it
+        font_descriptor_vector.push(("FontBBox".into(), Array(font_bounding_box)));
+
+        let font_descriptor_vector_id =
+            inner_document.add_object(lopdf::Dictionary::from_iter(font_descriptor_vector));
+
+        font_descriptors.set("FontDescriptor", Reference(font_descriptor_vector_id));
+
+        font_vector.push((
+            "DescendantFonts".into(),
+            Array(vec![Dictionary(font_descriptors)]),
+        ));
+        font_vector.push(("ToUnicode".into(), Reference(cid_to_unicode_map_stream_id)));
+
+        lopdf::Dictionary::from_iter(font_vector)
+    }
+}
+
+/// One layer of PDF data. It can be converted into a `lopdf::Stream` by calling `into`.
 #[derive(Debug, Clone)]
 pub struct PdfLayer {
     /// Name of the layer. Must be present for the optional content group.
@@ -166,24 +341,27 @@ pub struct PdfLayer {
 impl From<PdfLayer> for lopdf::Stream {
     fn from(value: PdfLayer) -> Self {
         use lopdf::{Dictionary, Stream};
+        // Construct the stream content from the actual underlying operations of the layer
         let stream_content = lopdf::content::Content {
             operations: value.operations,
         };
 
-        // Page contents should not be compressed
         Stream::new(
             Dictionary::new(),
             stream_content
                 .encode()
-                .map_err(|error| ContextError::with_error("Failed to encode PDF content", &error))
+                .map_err(|error| {
+                    ContextError::with_error("Failed to encode PDF layer content", &error)
+                })
                 .unwrap(),
         )
-        .with_compression(true)
+        .with_compression(false) // Page contents should not be compressed
     }
 }
 
 use nalgebra_glm as glm;
 
+/// The low-level image representation for a PDF document.
 #[derive(Debug, Clone)]
 pub struct ImageXObject {
     /// Width of the image (original width, not scaled width).
@@ -197,16 +375,30 @@ pub struct ImageXObject {
     pub interpolate: bool,
     /// The actual data from the image.
     pub image_data: Vec<u8>,
-    // SoftMask for transparency, if `None` assumes no transparency. See page 444 of the adope pdf 1.4 reference
+    // SoftMask for transparency, if `None` assumes no transparency. See page 444 of the adope pdf 1.4 reference.
     pub soft_mask: Option<lopdf::ObjectId>,
     /// The bounding box of the image.
     pub clipping_bounding_box: Option<glm::Mat4>,
 }
 
+/// `XObject`s are parts of the PDF specification. They allow for complex behavior to be
+/// inserted into the PDF document: this comprises bookmarks, annotations and even images.
+/// My implementation is only partial as it allows only for images.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-enum XObject {
+pub enum XObject {
     Image(ImageXObject),
+}
+
+impl From<XObject> for lopdf::Object {
+    fn from(value: XObject) -> Self {
+        match value {
+            // The conversion from an `XObject` to a PDF object is not yet implemented
+            XObject::Image(_) => {
+                unimplemented!()
+            }
+        }
+    }
 }
 
 /// Named reference to an `XObject`.
@@ -220,20 +412,12 @@ impl XObjectReference {
     }
 }
 
-impl From<XObject> for lopdf::Object {
-    fn from(value: XObject) -> Self {
-        match value {
-            XObject::Image(_) => {
-                unimplemented!()
-            }
-        }
-    }
-}
-
+/// The association between the `XObject`s properties and the actual `XObject`s themselves.
 #[derive(Default, Debug, Clone)]
 pub struct XObjectMap(HashMap<String, XObject>);
 
 impl XObjectMap {
+    /// Inserts the `XObject`s into the document, simultaneously constructing a PDF dictionary of them.
     pub fn into_with_document(self, document: &mut lopdf::Document) -> lopdf::Dictionary {
         self.0
             .into_iter()
@@ -246,6 +430,7 @@ impl XObjectMap {
     }
 }
 
+/// A named reference to an OCG (Optional Content Group), which is parts of the PDF specification.
 #[derive(Debug, Clone)]
 pub struct OcgReference(String);
 
@@ -256,12 +441,17 @@ impl OcgReference {
     }
 }
 
+/// The association between the OCG references and the actual PDF objects.
+#[derive(Default, Debug, Clone)]
+pub struct OcgLayersMap(Vec<(OcgReference, lopdf::Object)>);
+
 impl OcgLayersMap {
-    /// Adds a new OCG List from a reference
+    /// Adds a new OCG List from a reference.
     pub fn add_ocg(&mut self, object: lopdf::Object) -> OcgReference {
         let length = self.0.len();
         let ocg_reference = OcgReference::new(length);
         self.0.push((ocg_reference.clone(), object));
+
         ocg_reference
     }
 }
@@ -270,18 +460,16 @@ impl From<OcgLayersMap> for lopdf::Dictionary {
     fn from(value: OcgLayersMap) -> Self {
         let mut dictionary = lopdf::Dictionary::new();
 
+        // Construct a dictionary from the pairs of the mapping
         for entry in value.0 {
-            dictionary.set(entry.0 .0, entry.1);
+            dictionary.set((entry.0).0, entry.1);
         }
 
         dictionary
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct OcgLayersMap(Vec<(OcgReference, lopdf::Object)>);
-
-/// Struct for storing the PDF Resources, to be used on a PDF page
+/// Struct for storing the PDF Resources, to be used on a PDF page.
 #[derive(Default, Debug, Clone)]
 pub struct PdfResources {
     /// External graphics objects.
@@ -290,7 +478,45 @@ pub struct PdfResources {
     pub ocg_layers: OcgLayersMap,
 }
 
-/// PDF page
+impl PdfResources {
+    pub fn into_with_document_and_layers(
+        self,
+        inner_document: &mut lopdf::Document,
+        layers: Vec<lopdf::Object>,
+    ) -> (lopdf::Dictionary, Vec<OcgReference>) {
+        let mut dictionary = lopdf::Dictionary::new();
+
+        let mut ocg_dictionary = self.ocg_layers;
+        let mut ocg_references = Vec::<OcgReference>::new();
+
+        let xobjects_dictionary: lopdf::Dictionary =
+            self.xobjects.into_with_document(inner_document);
+
+        if !layers.is_empty() {
+            for layer in layers {
+                ocg_references.push(ocg_dictionary.add_ocg(layer));
+            }
+
+            let current_ocg_dictionary: lopdf::Dictionary = ocg_dictionary.into();
+
+            if !current_ocg_dictionary.is_empty() {
+                dictionary.set(
+                    "Properties",
+                    lopdf::Object::Dictionary(current_ocg_dictionary),
+                );
+            }
+        }
+
+        if !xobjects_dictionary.is_empty() {
+            dictionary.set("XObject", lopdf::Object::Dictionary(xobjects_dictionary));
+        }
+
+        (dictionary, ocg_references)
+    }
+}
+
+/// The representation of a PDF page. Utility functions are implemented for this struct
+/// so that its content can be inserted into the underlying PDF document.
 #[derive(Debug, Clone)]
 pub struct PdfPage {
     /// The index of the page in the document.
@@ -309,6 +535,73 @@ pub struct PdfPage {
     pub(crate) extend_with: Option<lopdf::Dictionary>,
 }
 
+impl PdfPage {
+    /// Iterates over all the layers in order to construct the dictionary for the PDF resources
+    /// and the PDF streams contained into the page so that they can be inserted in to the document.
+    ///
+    /// # Arguments
+    ///
+    /// * `inner_document` - The underlying PDF document.
+    /// * `layers` - The layers to be iterated over.
+    pub(crate) fn collect_resources_and_streams(
+        self,
+        inner_document: &mut lopdf::Document,
+        layers: &[(usize, lopdf::Object)],
+    ) -> Result<(lopdf::Dictionary, Vec<lopdf::Stream>), ContextError> {
+        // Collects all the objects present in the given layers
+        let current_layers = layers.iter().map(|layer| layer.1.clone()).collect();
+        // Collect the resources dictionary and the references to the OCG from the resources of the page,
+        // simultaneously inserting them into the PDF document
+        let (resource_dictionary, ocg_references) = self
+            .resources
+            .into_with_document_and_layers(inner_document, current_layers);
+
+        let mut layer_streams = Vec::<lopdf::Stream>::new();
+        use lopdf::content::Operation;
+        use lopdf::Object::*;
+
+        for (index, mut layer) in self.layers.into_iter().enumerate() {
+            // Push OCG and q to the beginning of the layer
+            // In the PDF specification the q/Q operator is an operator which creates an isolated graphics state block
+            // In our case we are creating one with no state
+            layer.operations.insert(0, Operation::new("q", vec![]));
+            // In the PDF specification the BDC operator represents the beginning of a marked-content sequence
+            layer.operations.insert(
+                0,
+                Operation::new(
+                    "BDC",
+                    vec![
+                        // In the PDF specification the OC operand relates to optional content
+                        Name("OC".into()),
+                        Name(
+                            ocg_references
+                                .get(index)
+                                .ok_or(ContextError::with_context(
+                                    "Unable to find the index in the OCG references",
+                                ))?
+                                .0
+                                .clone()
+                                .into(),
+                        ),
+                    ],
+                ),
+            );
+
+            // Push OCG END and Q to the end of the layer stream
+            layer.operations.push(Operation::new("Q", vec![]));
+            layer.operations.push(Operation::new("EMC", vec![]));
+
+            let layer_stream = layer.into();
+            layer_streams.push(layer_stream);
+        }
+
+        Ok((resource_dictionary, layer_streams))
+    }
+}
+
+/// Converts millimeters to points. This function is used in order to present the data
+/// in the format required by the PDF specification, while the end user might want to work in
+/// millimeters which are easier to reason about.
 fn millimeters_to_points(millimeters: f32) -> f32 {
     millimeters * 2.834646
 }
@@ -324,7 +617,7 @@ impl PdfDocument {
     pub fn new(identifier: String) -> Self {
         PdfDocument {
             fonts: BTreeMap::default(),
-            inner_document: lopdf::Document::with_version("1.3"),
+            inner_document: lopdf::Document::with_version("1.5"),
             identifier,
             pages: Vec::new(),
         }
@@ -674,121 +967,7 @@ impl PdfDocument {
 
         Ok(pdf_document_bytes)
     }
-}
 
-impl PdfResources {
-    pub fn into_with_document_and_layers(
-        self,
-        inner_document: &mut lopdf::Document,
-        layers: Vec<lopdf::Object>,
-    ) -> (lopdf::Dictionary, Vec<OcgReference>) {
-        let mut dictionary = lopdf::Dictionary::new();
-
-        let mut ocg_dictionary = self.ocg_layers;
-        let mut ocg_references = Vec::<OcgReference>::new();
-
-        let xobjects_dictionary: lopdf::Dictionary =
-            self.xobjects.into_with_document(inner_document);
-
-        if !layers.is_empty() {
-            for layer in layers {
-                ocg_references.push(ocg_dictionary.add_ocg(layer));
-            }
-
-            let current_ocg_dictionary: lopdf::Dictionary = ocg_dictionary.into();
-
-            if !current_ocg_dictionary.is_empty() {
-                dictionary.set(
-                    "Properties",
-                    lopdf::Object::Dictionary(current_ocg_dictionary),
-                );
-            }
-        }
-
-        if !xobjects_dictionary.is_empty() {
-            dictionary.set("XObject", lopdf::Object::Dictionary(xobjects_dictionary));
-        }
-
-        (dictionary, ocg_references)
-    }
-}
-
-impl PdfPage {
-    pub(crate) fn collect_resources_and_streams(
-        self,
-        inner_document: &mut lopdf::Document,
-        layers: &[(usize, lopdf::Object)],
-    ) -> Result<(lopdf::Dictionary, Vec<lopdf::Stream>), ContextError> {
-        let current_layers = layers.iter().map(|layer| layer.1.clone()).collect();
-        let (resource_dictionary, ocg_references) = self
-            .resources
-            .into_with_document_and_layers(inner_document, current_layers);
-
-        // Set contents
-        let mut layer_streams = Vec::<lopdf::Stream>::new();
-        use lopdf::content::Operation;
-        use lopdf::Object::*;
-
-        for (index, mut layer) in self.layers.into_iter().enumerate() {
-            // Push OCG and q to the beginning of the layer
-            layer.operations.insert(0, Operation::new("q", vec![]));
-            layer.operations.insert(
-                0,
-                Operation::new(
-                    "BDC",
-                    vec![
-                        Name("OC".into()),
-                        Name(
-                            ocg_references
-                                .get(index)
-                                .ok_or(ContextError::with_context(
-                                    "Unable to find the index in the OCG references",
-                                ))?
-                                .0
-                                .clone()
-                                .into(),
-                        ),
-                    ],
-                ),
-            );
-
-            // Push OCG END and Q to the end of the layer stream
-            layer.operations.push(Operation::new("Q", vec![]));
-            layer.operations.push(Operation::new("EMC", vec![]));
-
-            let layer_stream = layer.into();
-            layer_streams.push(layer_stream);
-        }
-
-        Ok((resource_dictionary, layer_streams))
-    }
-}
-
-type GlyphId = u32;
-type UnicodeCodePoint = u32;
-type CmapBlock = Vec<(GlyphId, UnicodeCodePoint)>;
-
-/// Generates a CMAP (character map) from valid cmap blocks.
-fn generate_cid_to_unicode_map(face_name: String, all_cmap_blocks: Vec<CmapBlock>) -> String {
-    let mut cid_to_unicode_map =
-        format!(include_str!("../assets/gid_to_unicode_beg.txt"), face_name);
-
-    for cmap_block in all_cmap_blocks
-        .into_iter()
-        .filter(|block| !block.is_empty() || block.len() < 100)
-    {
-        cid_to_unicode_map.push_str(format!("{} beginbfchar\r\n", cmap_block.len()).as_str());
-        for (glyph_id, unicode) in cmap_block {
-            cid_to_unicode_map.push_str(format!("<{glyph_id:04x}> <{unicode:04x}>\n").as_str());
-        }
-        cid_to_unicode_map.push_str("endbfchar\r\n");
-    }
-
-    cid_to_unicode_map.push_str(include_str!("../assets/gid_to_unicode_end.txt"));
-    cid_to_unicode_map
-}
-
-impl PdfDocument {
     /// Converts the fonts into a dictionary.
     fn insert_fonts_into_document(&mut self) -> lopdf::Dictionary {
         let mut font_dictionary = lopdf::Dictionary::new();
@@ -803,179 +982,7 @@ impl PdfDocument {
         }
         font_dictionary
     }
-}
 
-impl Font {
-    fn insert_into_document(&self, inner_document: &mut lopdf::Document) -> lopdf::Dictionary {
-        use lopdf::Object::*;
-        let face_metrics = self.ttf_face.font_metrics();
-
-        let font_stream = lopdf::Stream::new(
-            lopdf::Dictionary::from_iter(vec![("Length1", Integer(self.bytes.len() as i64))]),
-            self.bytes.clone(),
-        )
-        .with_compression(true);
-
-        // Begin stting required font attributes
-        let mut font_vector: Vec<(::std::string::String, lopdf::Object)> = vec![
-            ("Type".into(), Name("Font".into())),
-            ("Subtype".into(), Name("Type0".into())),
-            (
-                "BaseFont".into(),
-                Name(self.face_identifier.clone().into_bytes()),
-            ),
-            // Identity-H for horizontal writing, Identity-V for vertical writing
-            ("Encoding".into(), Name("Identity-H".into())),
-            // Missing DescendantFonts and ToUnicode
-        ];
-
-        let mut font_descriptor_vector: Vec<(::std::string::String, lopdf::Object)> = vec![
-            ("Type".into(), Name("FontDescriptor".into())),
-            (
-                "FontName".into(),
-                Name(self.face_identifier.clone().into_bytes()),
-            ),
-            ("Ascent".into(), Integer(i64::from(face_metrics.ascent))),
-            ("Descent".into(), Integer(i64::from(face_metrics.descent))),
-            ("CapHeight".into(), Integer(i64::from(face_metrics.ascent))),
-            ("ItalicAngle".into(), Integer(0)),
-            ("Flags".into(), Integer(32)),
-            ("StemV".into(), Integer(80)),
-        ];
-
-        // Maximum height of a single character in the font
-        let mut maximum_character_height = 0;
-        // Total width of all characters
-        let mut total_width = 0;
-        // Widths (or heights, depends on self.vertical_writing) of the individual characters, indexed by glyph id
-        let mut character_widths = Vec::<(u32, u32)>::new();
-
-        // Glyph IDs - (Unicode IDs - character width, character height)
-        let mut cmap = BTreeMap::<u32, (u32, u32, u32)>::new();
-        cmap.insert(0, (0, 1000, 1000));
-
-        for (glyph_id, character) in self.ttf_face.glyph_ids() {
-            if let Some(glyph_metrics) = self.ttf_face.glyph_metrics(glyph_id) {
-                if glyph_metrics.height > maximum_character_height {
-                    maximum_character_height = glyph_metrics.height;
-                }
-
-                total_width += glyph_metrics.width;
-                cmap.insert(
-                    glyph_id as u32,
-                    (character as u32, glyph_metrics.width, glyph_metrics.height),
-                );
-            }
-        }
-
-        let mut current_first_bit: u16 = 0; // Current first bit of the glyph id (0x10 or 0x12) for example
-
-        let mut all_cmap_blocks = Vec::new();
-
-        {
-            let mut current_cmap_block = Vec::new();
-
-            for (glyph_id, unicode_width_tuple) in &cmap {
-                if (*glyph_id >> 8) as u16 != current_first_bit || current_cmap_block.len() >= 100 {
-                    // End the current (beginbfchar endbfchar) block
-                    all_cmap_blocks.push(current_cmap_block.clone());
-                    current_cmap_block = Vec::new();
-                    current_first_bit = (*glyph_id >> 8) as u16;
-                }
-
-                let (unicode, width, _) = *unicode_width_tuple;
-                current_cmap_block.push((*glyph_id, unicode));
-                character_widths.push((*glyph_id, width));
-            }
-
-            all_cmap_blocks.push(current_cmap_block);
-        }
-
-        let cid_to_unicode_map =
-            generate_cid_to_unicode_map(self.face_identifier.clone(), all_cmap_blocks);
-        let cid_to_unicode_map_stream = lopdf::Stream::new(
-            lopdf::Dictionary::new(),
-            cid_to_unicode_map.as_bytes().to_vec(),
-        );
-        let cid_to_unicode_map_stream_id = inner_document.add_object(cid_to_unicode_map_stream);
-
-        let mut widths_list = Vec::<Object>::new();
-        let mut current_low_gid = 0;
-        let mut current_high_gid = 0;
-        let mut current_width_vector = Vec::<Object>::new();
-
-        // Scale the font width so that it sort-of fits into an 1000 unit square
-        let percentage_font_scaling = 1000.0 / (face_metrics.units_per_em as f32);
-
-        for gid in 0..self.ttf_face.glyph_count() {
-            if let Some(GlyphMetrics { width, .. }) = self.ttf_face.glyph_metrics(gid) {
-                if gid == current_high_gid {
-                    current_width_vector
-                        .push(Integer((width as f32 * percentage_font_scaling) as i64));
-                    current_high_gid += 1;
-                } else {
-                    widths_list.push(Integer(current_low_gid as i64));
-                    widths_list.push(Array(std::mem::take(&mut current_width_vector)));
-
-                    current_width_vector
-                        .push(Integer((width as f32 * percentage_font_scaling) as i64));
-                    current_low_gid = gid;
-                    current_high_gid = gid + 1;
-                }
-            } else {
-                continue;
-            }
-        }
-        // Push the last widths, because the loop is delayed by one iteration
-        widths_list.push(Integer(current_low_gid as i64));
-        widths_list.push(Array(std::mem::take(&mut current_width_vector)));
-
-        let mut font_descriptors = lopdf::Dictionary::from_iter(vec![
-            ("Type", Name("Font".into())),
-            ("Subtype", Name("CIDFontType2".into())),
-            ("BaseFont", Name(self.face_identifier.clone().into())),
-            (
-                "CIDSystemInfo",
-                Dictionary(lopdf::Dictionary::from_iter(vec![
-                    ("Registry", String("Adobe".into(), StringFormat::Literal)),
-                    ("Ordering", String("Identity".into(), StringFormat::Literal)),
-                    ("Supplement", Integer(0)),
-                ])),
-            ),
-            ("W", Array(widths_list)),
-            ("DW", Integer(1000)),
-        ]);
-
-        let font_bounding_box = vec![
-            Integer(0),
-            Integer(maximum_character_height as i64),
-            Integer(total_width as i64),
-            Integer(maximum_character_height as i64),
-        ];
-        font_descriptor_vector.push((
-            "FontFile2".into(),
-            Reference(inner_document.add_object(font_stream)),
-        ));
-
-        // Although the following entry is technically not needed, Adobe Reader needs it
-        font_descriptor_vector.push(("FontBBox".into(), Array(font_bounding_box)));
-
-        let font_descriptor_vector_id =
-            inner_document.add_object(lopdf::Dictionary::from_iter(font_descriptor_vector));
-
-        font_descriptors.set("FontDescriptor", Reference(font_descriptor_vector_id));
-
-        font_vector.push((
-            "DescendantFonts".into(),
-            Array(vec![Dictionary(font_descriptors)]),
-        ));
-        font_vector.push(("ToUnicode".into(), Reference(cid_to_unicode_map_stream_id)));
-
-        lopdf::Dictionary::from_iter(font_vector)
-    }
-}
-
-impl PdfDocument {
     fn add_operations_to_layer_in_page(
         &mut self,
         layer_index: usize,
@@ -987,6 +994,7 @@ impl PdfDocument {
 
         Ok(())
     }
+
     fn get_font(&mut self, font_index: usize) -> Result<&((u32, u16), Font), ContextError> {
         self.fonts
             .get(&format!("F{font_index}"))
@@ -1020,6 +1028,30 @@ impl PdfDocument {
     }
 }
 
+type GlyphId = u32;
+type UnicodeCodePoint = u32;
+type CmapBlock = Vec<(GlyphId, UnicodeCodePoint)>;
+
+/// Generates a CMAP (character map) from valid cmap blocks.
+fn generate_cid_to_unicode_map(face_name: String, all_cmap_blocks: Vec<CmapBlock>) -> String {
+    let mut cid_to_unicode_map =
+        format!(include_str!("../assets/gid_to_unicode_beg.txt"), face_name);
+
+    for cmap_block in all_cmap_blocks
+        .into_iter()
+        .filter(|block| !block.is_empty() || block.len() < 100)
+    {
+        cid_to_unicode_map.push_str(format!("{} beginbfchar\r\n", cmap_block.len()).as_str());
+        for (glyph_id, unicode) in cmap_block {
+            cid_to_unicode_map.push_str(format!("<{glyph_id:04x}> <{unicode:04x}>\n").as_str());
+        }
+        cid_to_unicode_map.push_str("endbfchar\r\n");
+    }
+
+    cid_to_unicode_map.push_str(include_str!("../assets/gid_to_unicode_end.txt"));
+    cid_to_unicode_map
+}
+
 // D:20170505150224+02'00'
 fn to_pdf_timestamp_format(date: &OffsetDateTime) -> String {
     let offset = date.offset();
@@ -1035,4 +1067,97 @@ fn to_pdf_timestamp_format(date: &OffsetDateTime) -> String {
         offset.whole_hours().abs(),
         offset.minutes_past_hour().abs(),
     )
+}
+
+/// This function is used to optimize the PDF file by running ghostscript on it. The command which is run
+/// is the following:
+///
+/// ```bash
+/// $ gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile=output.pdf input.pdf
+/// ```
+///
+/// What we do though is to create an intermediate `.swp` file and then rename it to the expected one.
+/// This is procedure of creating an intermediate file is a workaround to a limitation of the shell.
+///
+/// # Arguments
+///
+/// * `pdf_path` - The path to the PDF file to be optimized.
+pub fn optimize_pdf_file_with_gs(pdf_path: &str) -> Result<(), ContextError> {
+    // Run ghostscript to optimize the PDF file
+    // $ gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile=output.pdf input.pdf
+    let child = std::process::Command::new("gs")
+        .arg("-sDEVICE=pdfwrite")
+        .arg("-dCompatibilityLevel=1.5")
+        .arg("-dPDFSETTINGS=/ebook")
+        .arg("-dNOPAUSE")
+        .arg("-dQUIET")
+        .arg("-dBATCH")
+        .arg(format!("-sOutputFile={}.swp", pdf_path))
+        .arg(pdf_path)
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            let status = child.wait().map_err(|error| {
+                ContextError::with_error("Unable to wait for the gs command execution", &error)
+            })?;
+            if !status.success() {
+                return Err(ContextError::with_context(format!(
+                    "gs failed with status {:?}",
+                    status
+                )));
+            }
+            std::fs::rename(format!("{}.swp", pdf_path), pdf_path).map_err(|error| {
+                ContextError::with_error("Unable to rename the optimized PDF file", &error)
+            })?;
+        }
+        Err(error) => {
+            return Err(ContextError::with_error(
+                "Unable to run the gs command",
+                &error,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// This function is used to optimize the PDF file by running ps2pdf on it.
+/// An intermediate file with the `.swp` extension is created and then renamed immediately
+/// to the expected one, which is the given path.
+///
+/// # Arguments
+///
+/// * `pdf_path` - The path to the PDF file to be optimized.
+///
+/// This is procedure of creating an intermediate file is a workaround to a limitation of the shell.
+pub fn optimize_pdf_file_with_ps2pdf(pdf_path: &str) -> Result<(), ContextError> {
+    // Run ps2pdf to optimize the PDF file
+    let child = std::process::Command::new("ps2pdf")
+        .arg(pdf_path)
+        .arg(format!("{}.swp", pdf_path))
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            let status = child.wait().map_err(|error| {
+                ContextError::with_error("Unable to wait for the ps2pdf command execution", &error)
+            })?;
+            if !status.success() {
+                return Err(ContextError::with_context(format!(
+                    "ps2pdf failed with status {:?}",
+                    status
+                )));
+            }
+            std::fs::rename(format!("{}.swp", pdf_path), pdf_path).map_err(|error| {
+                ContextError::with_error("Unable to rename the optimized PDF file", &error)
+            })?;
+        }
+        Err(error) => {
+            return Err(ContextError::with_error(
+                "Unable to run the ps2pdf command",
+                &error,
+            ));
+        }
+    }
+
+    Ok(())
 }

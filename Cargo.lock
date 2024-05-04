@@ -838,7 +838,6 @@ dependencies = [
  "owned_ttf_parser",
  "rand",
  "rand-utf8",
- "rayon",
  "serde",
  "serde_json",
  "similar-asserts",
