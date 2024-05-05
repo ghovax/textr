@@ -537,7 +537,7 @@ impl From<OcgLayersMap> for lopdf::Dictionary {
 
 /// Struct for storing the PDF Resources, to be used on a PDF page.
 #[derive(Default, Debug, Clone)]
-pub struct PdfResources {
+pub(crate) struct PdfResources {
     /// External graphics objects.
     pub xobjects: XObjectMap,
     /// Layers / optional content ("Properties") in the resource dictionary.
@@ -545,27 +545,35 @@ pub struct PdfResources {
 }
 
 impl PdfResources {
-    pub fn into_with_document_and_layers(
+    /// Inserts the resources into the document, simultaneously constructing a PDF dictionary of them.
+    /// Returns the constructed dictionary and the vector of the OCG references.
+    pub(crate) fn into_with_document_and_layers(
         self,
         inner_document: &mut lopdf::Document,
         layers: Vec<lopdf::Object>,
     ) -> (lopdf::Dictionary, Vec<OcgReference>) {
         let mut dictionary = lopdf::Dictionary::new();
 
-        let mut ocg_dictionary = self.ocg_layers;
+        let mut ocg_layers_dictionary = self.ocg_layers;
         let mut ocg_references = Vec::<OcgReference>::new();
 
+        // Insert the in `XObjects` into the document and obtain the associated dictionary
         let xobjects_dictionary: lopdf::Dictionary =
             self.xobjects.into_with_document(inner_document);
 
+        // If the given layers are not empty..
         if !layers.is_empty() {
             for layer in layers {
-                ocg_references.push(ocg_dictionary.add_ocg(layer));
+                // Add each layer to the OCG dictionary
+                ocg_references.push(ocg_layers_dictionary.add_ocg(layer));
             }
 
-            let current_ocg_dictionary: lopdf::Dictionary = ocg_dictionary.into();
+            // Construct a dictionary from the OCG layers
+            let current_ocg_dictionary: lopdf::Dictionary = ocg_layers_dictionary.into();
 
+            // If the OCG dictionary is not empty..
             if !current_ocg_dictionary.is_empty() {
+                // Add the OCG dictionary to the PDF dictionary
                 dictionary.set(
                     "Properties",
                     lopdf::Object::Dictionary(current_ocg_dictionary),
@@ -573,10 +581,12 @@ impl PdfResources {
             }
         }
 
+        // Again, if the `XObjects` dictionary isn't empty, set the associated PDF key to the appropriated value
         if !xobjects_dictionary.is_empty() {
             dictionary.set("XObject", lopdf::Object::Dictionary(xobjects_dictionary));
         }
 
+        // Finally, return the constructed dictionary and the OCG references for later usage
         (dictionary, ocg_references)
     }
 }
@@ -604,6 +614,8 @@ pub struct PdfPage {
 impl PdfPage {
     /// Iterates over all the layers in order to construct the dictionary for the PDF resources
     /// and the PDF streams contained into the page so that they can be inserted in to the document.
+    /// Returns the dictionary of the resources and the vector containing all the streams associated
+    /// to the layers.
     ///
     /// # Arguments
     ///
@@ -672,33 +684,60 @@ fn millimeters_to_points(millimeters: f32) -> f32 {
     millimeters * 2.834646
 }
 
+/// This struct represents the actual PDF document on a high-level. It is an interface to the actual underlying
+/// `lopdf::document` with the addition of the PDF pages, the document ID and the fonts used in the document.
+///
+/// Various convenience functions are exposed for this struct, such as `add_page_with_layer`, `add_font`,
+/// `write_text_to_layer_in_page`, `save_to_bytes`, which make the creation of a PDF document very much simplified.
 pub struct PdfDocument {
+    /// The association between the fonts ID, the object it is represented by and its face data.
     fonts: BTreeMap<String, (lopdf::ObjectId, Font)>,
-    inner_document: lopdf::Document,
-    identifier: String,
-    pages: Vec<PdfPage>,
+    /// The underlying PDF document: this is a low-level interface and shouldn't be directly interacted with
+    /// unless strictly necessary, anyway this is why it is exposed to the user.
+    pub inner_document: lopdf::Document,
+    /// The identifier of the document, it is used to in order to set the PDF `ID` tag.
+    pub identifier: String,
+    /// The pages of the PDF document.
+    pub(crate) pages: Vec<PdfPage>,
 }
 
 impl PdfDocument {
-    pub fn new(identifier: String) -> Self {
+    /// Create a new `PdfDocument` by defaulting the underlying PDF document to version 1.5
+    /// of the PDF specification and customly specifying the PDF identifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `pdf_document_identifier` - The identifier to be given to the PDF document.
+    pub fn new(pdf_document_identifier: String) -> Self {
         PdfDocument {
             fonts: BTreeMap::default(),
             inner_document: lopdf::Document::with_version("1.5"),
-            identifier,
+            identifier: pdf_document_identifier,
             pages: Vec::new(),
         }
     }
 
+    /// Adds a page of given width and height in millimeters with an empty layer for contents to be added to.
+    /// The function returns the index of the page and of the layer in the page, these are to be passed
+    /// to the other functions when calling them, such as to `write_text_to_layer_in_page`.
+    /// The reason why we work with indices is because it notably simplifies the handling of the pages and the layers.
+    ///
+    /// # Arguments
+    ///
+    /// * `page_width` - The width of the PDF page to be created as expressed in millimeters.
+    /// * `page_height` - The height of the PDF page to be created as expressed in millimeters.
     pub fn add_page_with_layer(&mut self, page_width: f32, page_height: f32) -> (usize, usize) {
+        // Creates a new PDF page correctly numbered
         let mut pdf_page = PdfPage {
             number: self.pages.len() + 1,
-            width: millimeters_to_points(page_width),
+            width: millimeters_to_points(page_width), // Convert millimeters to points because this is what `lopdf` expects
             height: millimeters_to_points(page_height),
-            layers: Vec::new(),
+            layers: Vec::new(), // The layer will be later added
             resources: PdfResources::default(),
-            extend_with: None,
+            extend_with: None, // NOTE(ghovax): This could be actually further on inserted, but it's not clear how even from the original author's work.
         };
 
+        // Create a new PDF layer with a pre-given name and then append it to the current page.
         let pdf_layer = PdfLayer {
             name: "Layer0".into(),
             operations: Vec::new(),
@@ -708,13 +747,24 @@ impl PdfDocument {
 
         let page_index = self.pages.len() - 1;
         let layer_index_in_page = 0;
+        // Return the page and layer in page indices
         (page_index, layer_index_in_page)
     }
 
+    /// Add a font from the given path to the document. This function expects the font to be TTF, or either way
+    /// an OTF font which is just a wrapper around a TTF font. If successful, the function returns
+    /// the index of the font which is then to be used in order to write text via the `write_text_to_layer_in_page` function.
+    ///
+    /// # Arguments
+    ///
+    /// * `font_path` - The path to the TTF/OTF font to be loaded into the PDF document.
     pub fn add_font(&mut self, font_path: &Path) -> Result<usize, ContextError> {
-        let font_bytes = std::fs::read(font_path)
-            .map_err(|error| ContextError::with_error("Failed to read font", &error))?;
+        // Load the bytes associated to the font from the given path
+        let font_bytes = std::fs::read(font_path).map_err(|error| {
+            ContextError::with_error("Failed to read font, probably the path is wrong", &error)
+        })?;
 
+        // Parse the font face from the given data and then construct the font
         let ttf_font_face = TtfFontFace::from_bytes(&font_bytes)
             .map_err(|error| ContextError::with_error("Failed to parse font", &error))?;
         let font = Font {
@@ -722,14 +772,33 @@ impl PdfDocument {
             ttf_face: ttf_font_face,
             face_identifier: format!("F{}", self.fonts.len()),
         };
+        // Inserts the object into the fonts of the PDF document, to be later processed
         let font_object_id = self.inner_document.new_object_id();
         self.fonts
             .insert(font.face_identifier.clone(), (font_object_id, font.clone()));
 
         let font_index = self.fonts.len() - 1;
+        // Return the font index
         Ok(font_index)
     }
 
+    /// Writes the text in the specified font, color at the caret position to the PDF document. The information is
+    /// inserted onto the given layer of the specified page (refer to the other functions documentation for more details).
+    /// If the operation is successful, then return nothing.
+    ///
+    /// # Arguments
+    ///
+    /// * `page_index` - The index of the page to write the text to (should be previously obtained).
+    /// * `layer_index` - The index of the layer to write the text to (should be previously obtained).
+    /// * `color` - The RGB color employed for filling of the text.
+    /// * `text` - The text to be written at the given layer in the given page.
+    /// * `font_index` - The index of the font to be used when writing the text (should be previously obtained).
+    /// * `font_size` - The size of the font.
+    /// * `caret_position` - The position in millimeters where the text should begin to be drawn.
+    ///
+    /// This function might appear to have too many arguments, but this is on purpose in order to keep the
+    /// API or this library quite on the simpler side. Any external algorithm for layouting text should
+    /// take into consideration the way in which text is inserted into the PDF. Checkout the PDF specification for more details.
     #[allow(clippy::too_many_arguments)]
     pub fn write_text_to_layer_in_page(
         &mut self,
@@ -741,7 +810,10 @@ impl PdfDocument {
         font_size: f32,
         caret_position: [f32; 2],
     ) -> Result<(), ContextError> {
+        // Retrieve the font at the given font index
         let font = self.get_font(font_index)?.1.clone(); // TODO: I shouldn't have to clone the font data
+
+        // Insert the required operations for writing text to the layer
         self.add_operations_to_layer_in_page(
             layer_index,
             page_index,
@@ -757,46 +829,64 @@ impl PdfDocument {
                         millimeters_to_points(x).into(),
                         millimeters_to_points(y).into(),
                     ]
-                }),
+                }), // Set the position where the text begins to be written
                 lopdf::content::Operation::new("rg", {
                     let [r, g, b] = color;
                     vec![r, g, b].into_iter().map(lopdf::Object::Real).collect()
                 }),
+                // Set the filling color of the text
             ],
         )?;
 
-        let mut gid_list = Vec::<u16>::new();
-        // Normalize the text in the NFC form
+        let mut glyph_id_list = Vec::<u16>::new();
+        // Normalize the text in the NFC form before processing
         for character in text.nfc() {
+            // Retrieve the glyph ID of each character from the font
             if let Some(glyph_id) = font.ttf_face.glyph_id(character) {
-                gid_list.push(glyph_id);
+                glyph_id_list.push(glyph_id);
+            } else {
+                // Otherwise, if the character is not present in the font, log the event
+                log::warn!("Unable to find the character {:?} in the font", character)
             }
         }
-        let gid_bytes = gid_list
+
+        // Convert each glyph ID into the required byte format which is accepted by the PDF specification
+        let glyph_id_bytes = glyph_id_list
             .iter()
             .flat_map(|x| vec![(x >> 8) as u8, (x & 255) as u8])
             .collect::<Vec<u8>>();
+        // Insert the actual text content into the PDF document as bytes.
         self.add_operations_to_layer_in_page(
             layer_index,
             page_index,
             vec![lopdf::content::Operation::new(
                 "Tj",
                 vec![lopdf::Object::String(
-                    gid_bytes,
+                    glyph_id_bytes,
                     lopdf::StringFormat::Hexadecimal,
                 )],
             )],
         )?;
 
+        // Finalize the writing operation by including the text ending section
         self.add_operations_to_layer_in_page(
             layer_index,
             page_index,
             vec![lopdf::content::Operation::new("ET", vec![])],
         )?;
 
+        // Return that no error has happened
         Ok(())
     }
 
+    /// Save the `PdfDocument` to bytes in order for it to be written to a file or further processed.
+    ///
+    /// # Disclaimer
+    ///
+    /// One mandatory argument needed by the PDF specification is the instance ID, which needs to be a
+    /// 32 characters-long string. Also, saving the PDF to an actual document is a complicated process, so I recommend
+    /// end-users of this library to even tinker with this function and adapt it to their needs.
+    /// The output of this function is not optimized and should be fed into either ghostscript or `ps2pdf`.
     pub fn save_to_bytes(mut self, instance_id: String) -> Result<Vec<u8>, ContextError> {
         let pages_id = self.inner_document.new_object_id();
 
@@ -1034,7 +1124,7 @@ impl PdfDocument {
         Ok(pdf_document_bytes)
     }
 
-    /// Converts the fonts into a dictionary.
+    /// Converts the fonts into a dictionary and inserts them into the document.
     fn insert_fonts_into_document(&mut self) -> lopdf::Dictionary {
         let mut font_dictionary = lopdf::Dictionary::new();
 
@@ -1049,6 +1139,7 @@ impl PdfDocument {
         font_dictionary
     }
 
+    /// This function is responsible for adding the given operations to the specified layer and page.
     fn add_operations_to_layer_in_page(
         &mut self,
         layer_index: usize,
@@ -1061,15 +1152,17 @@ impl PdfDocument {
         Ok(())
     }
 
+    // Retrieve the font at the given font index.
     fn get_font(&mut self, font_index: usize) -> Result<&((u32, u16), Font), ContextError> {
         self.fonts
             .get(&format!("F{font_index}"))
             .ok_or(ContextError::with_context(format!(
-                "Failed to find font {}",
+                "Failed to find font {} into the fonts map",
                 font_index
             )))
     }
 
+    // Retrieve the specified layer in the given page via the respective indices.
     fn get_mut_layer_in_page(
         &mut self,
         layer_index: usize,
@@ -1126,7 +1219,8 @@ fn generate_cid_to_unicode_map(face_name: String, all_cmap_blocks: Vec<CmapBlock
     cid_to_unicode_map
 }
 
-// D:20170505150224+02'00'
+/// Formats the given time so that it matches what the PDF specification expects.
+/// An example of it is the following: D:20170505150224+02'00'.
 fn to_pdf_timestamp_format(date: &OffsetDateTime) -> String {
     let offset = date.offset();
     let offset_sign = if offset.is_negative() { '-' } else { '+' };
