@@ -2,7 +2,11 @@
 name = "textr"
 version = "0.1.0"
 edition = "2021"
-description = "TeX-inspired interface for converting JSON documents into PDFs"
+description = "TeX-inspired plug-n-play interface for converting JSON documents into PDFs"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/ghovax/textr"
+repository = "https://github.com/ghovax/textr"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,7 +32,7 @@ nalgebra-glm = "0.18.0" # Transforming the images through matrices
 unicode-normalization = "0.1.23" # Normalizing the document input
 similar-asserts = "1.5.0" # Testing different postscript documents
 
-# These crates where ruled out because they are not now employed, but could be useful in the future
+# These crates were ruled out because they are not now employed, but could be useful in the future
 # so I have left them here if anyone is willing to implement their usage
 
 # uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] } # For the unique file names

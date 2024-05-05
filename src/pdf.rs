@@ -106,6 +106,7 @@ impl TtfFontFace {
 
     /// Attempt to calculate the metrics of a glyph from the associated glyph ID, taken as input.
     fn glyph_metrics(&self, glyph_id: u16) -> Option<GlyphMetrics> {
+        // Wrap an integer into a `GlyphId` for enabling the associated traits
         let glyph_id = owned_ttf_parser::GlyphId(glyph_id);
 
         if let Some(width) = self.face().glyph_hor_advance(glyph_id) {
@@ -160,17 +161,21 @@ pub struct Font {
 }
 
 impl Font {
+    /// Takes a well-formed font and inserts it into the PDF document, returning the associated PDF dictionary.
     fn insert_into_document(&self, inner_document: &mut lopdf::Document) -> lopdf::Dictionary {
         use lopdf::Object::*;
+        // Retrieve the font metrics of the underlying font face
         let face_metrics = self.ttf_face.font_metrics();
 
+        // Construct the PDF stream which sets the length in bytes of the font data, this is requested by
+        // the PDF specification because the PDF format with mixed text and byte data
         let font_stream = lopdf::Stream::new(
             lopdf::Dictionary::from_iter(vec![("Length1", Integer(self.bytes.len() as i64))]),
             self.bytes.clone(),
         )
-        .with_compression(true);
+        .with_compression(false); // Do not compress it
 
-        // Begin stting required font attributes
+        // Begin setting the required font attributes
         let mut font_vector: Vec<(::std::string::String, lopdf::Object)> = vec![
             ("Type".into(), Name("Font".into())),
             ("Subtype".into(), Name("Type0".into())),
@@ -178,11 +183,12 @@ impl Font {
                 "BaseFont".into(),
                 Name(self.face_identifier.clone().into_bytes()),
             ),
-            // Identity-H for horizontal writing, Identity-V for vertical writing
+            // `Identity-H` is used for horizontal writing, while `Identity-V` for vertical writing
             ("Encoding".into(), Name("Identity-H".into())),
-            // Missing DescendantFonts and ToUnicode
+            // Although it is missing `DescendantFonts` and `ToUnicode`, these will be inserted later on
         ];
 
+        // Specify the font properties which will be used by PDF renderers to position the glyphs
         let mut font_descriptor_vector: Vec<(::std::string::String, lopdf::Object)> = vec![
             ("Type".into(), Name("FontDescriptor".into())),
             (
@@ -192,8 +198,11 @@ impl Font {
             ("Ascent".into(), Integer(i64::from(face_metrics.ascent))),
             ("Descent".into(), Integer(i64::from(face_metrics.descent))),
             ("CapHeight".into(), Integer(i64::from(face_metrics.ascent))),
-            ("ItalicAngle".into(), Integer(0)),
+            ("ItalicAngle".into(), Integer(0)), // I don't know any way of extracting this value from the font data
+            // This means that the font uses the Adobe standard Latin character set or a subset of it (https://pdfium.patagames.com/help/html/T_Patagames_Pdf_Enums_FontFlags.htm)
             ("Flags".into(), Integer(32)),
+            // This is a very complicated parameter to determine (https://stackoverflow.com/questions/35485179/stemv-value-of-the-truetype-font)
+            // The value 80 is the default value for `StemV` and is used here as an approximately appropriate value
             ("StemV".into(), Integer(80)),
         ];
 
@@ -201,89 +210,133 @@ impl Font {
         let mut maximum_character_height = 0;
         // Total width of all characters
         let mut total_width = 0;
-        // Widths (or heights, depends on self.vertical_writing) of the individual characters, indexed by glyph id
-        let mut character_widths = Vec::<(u32, u32)>::new();
 
-        // Glyph IDs - (Unicode IDs - character width, character height)
-        let mut cmap = BTreeMap::<u32, (u32, u32, u32)>::new();
-        cmap.insert(0, (0, 1000, 1000));
+        // This is an association between glyph IDs and triplets of Unicode IDs, character widths and character heights
+        let mut gid_to_glyph_properties_map = BTreeMap::<u32, (u32, u32, u32)>::new();
 
+        // TODO(ghovax): Figure out why the original author of this library originally inserted this line of code,
+        // because I don't really know what it does, but it doesn't seem to break anything.
+        gid_to_glyph_properties_map.insert(0, (0, 1000, 1000));
+
+        // For each pair ofglyph ID and associated character present in the font face...
         for (glyph_id, character) in self.ttf_face.glyph_ids() {
+            // Retrieve the glyph metrics for that glyph ID
             if let Some(glyph_metrics) = self.ttf_face.glyph_metrics(glyph_id) {
                 if glyph_metrics.height > maximum_character_height {
+                    // Save the maximum character heights registered so far into a variable to be later used
                     maximum_character_height = glyph_metrics.height;
                 }
 
+                // Register what is the total width of the glyphs so far encountered
                 total_width += glyph_metrics.width;
-                cmap.insert(
+                // Save the glyph metrics and the character when associated to a specific glyph ID, again to be later used
+                gid_to_glyph_properties_map.insert(
                     glyph_id as u32,
                     (character as u32, glyph_metrics.width, glyph_metrics.height),
                 );
             }
         }
 
-        let mut current_first_bit: u16 = 0; // Current first bit of the glyph id (0x10 or 0x12) for example
+        // NOTE(ghovax): The following is a comment from the original author, I found the explanation to be good enough
+        // but the comment of the code lackluster, so I've added more to clarify what the code is actually doing.
 
-        let mut all_cmap_blocks = Vec::new();
+        // The following operations map the character index to a Unicode value, this will then be added to the "ToUnicode" dictionary
+        //
+        // To explain this structure: Glyph IDs have to be in segments where the first byte of the
+        // first and last element have to be the same. A range from 0x1000 - 0x10FF is valid
+        // but a range from 0x1000 - 0x12FF is not (0x10 != 0x12)
+        // Plus, the maximum number of Glyph-IDs in one range is 100
+        //
+        // Since the glyph IDs are sequential, all we really have to do is to enumerate the vector
+        // and create buckets of 100 / rest to 256 if needed
 
+        let mut current_first_bit: u16 = 0; // Current first bit of the glyph ID (0x10 or 0x12) for example
+        let mut all_gid_to_character_blocks = Vec::new();
+
+        // Widths (or heights, depends on `self.vertical_writing`) of the individual characters, indexed by glyph ID
+        let mut character_widths = Vec::<(u32, u32)>::new();
+
+        let mut current_gid_to_character_block = Vec::new();
+        // For each previously collected glyph ID, extract the associated character and width of the corresponding glyph...
+        for (glyph_id, (character, glyph_width, _glyph_height)) in
+            gid_to_glyph_properties_map.iter()
         {
-            let mut current_cmap_block = Vec::new();
-
-            for (glyph_id, unicode_width_tuple) in &cmap {
-                if (*glyph_id >> 8) as u16 != current_first_bit || current_cmap_block.len() >= 100 {
-                    // End the current (beginbfchar endbfchar) block
-                    all_cmap_blocks.push(current_cmap_block.clone());
-                    current_cmap_block = Vec::new();
-                    current_first_bit = (*glyph_id >> 8) as u16;
-                }
-
-                let (unicode, width, _) = *unicode_width_tuple;
-                current_cmap_block.push((*glyph_id, unicode));
-                character_widths.push((*glyph_id, width));
+            // Remap the glyph ID into the accepted range for the PDF specification and make sure that
+            // we haven't reached the first bit of the current bucket, or either that we haven't exceeded the maximum bucket length of 100 elements
+            if (*glyph_id >> 8) as u16 != current_first_bit
+                || current_gid_to_character_block.len() >= 100
+            {
+                // End the current (beginbfchar endbfchar) block
+                all_gid_to_character_blocks.push(current_gid_to_character_block.clone());
+                current_gid_to_character_block = Vec::new();
+                current_first_bit = (*glyph_id >> 8) as u16;
             }
 
-            all_cmap_blocks.push(current_cmap_block);
+            // Add the glyph ID and the associated character to the current block and register the character widths for future usage
+            current_gid_to_character_block.push((*glyph_id, *character));
+            character_widths.push((*glyph_id, *glyph_width));
         }
 
+        // Do not forget to append the last block
+        all_gid_to_character_blocks.push(current_gid_to_character_block);
+
+        // Generate the mapping between the character IDs and the Unicode equivalents, then construct the associated PDF stream
+        // Finally, add it to the PDF document and save the associated object ID for later usage
         let cid_to_unicode_map =
-            generate_cid_to_unicode_map(self.face_identifier.clone(), all_cmap_blocks);
+            generate_cid_to_unicode_map(self.face_identifier.clone(), all_gid_to_character_blocks);
         let cid_to_unicode_map_stream = lopdf::Stream::new(
             lopdf::Dictionary::new(),
             cid_to_unicode_map.as_bytes().to_vec(),
         );
         let cid_to_unicode_map_stream_id = inner_document.add_object(cid_to_unicode_map_stream);
 
-        let mut widths_list = Vec::<Object>::new();
-        let mut current_low_gid = 0;
-        let mut current_high_gid = 0;
-        let mut current_width_vector = Vec::<Object>::new();
+        // NOTE(ghovax): The following is a comments from the original author.
+
+        // Encode widths and heights so that they fit into what PDF expects
+        // See page 439 in the PDF 1.7 reference
+        // Basically `widths_objects` will contain objects like this: 20 [21, 99, 34, 25],
+        // which means that the character with the GID 20 has a width of 21 units and the character with the GID 21 has a width of 99 units
+        let mut width_objects = Vec::<Object>::new();
+        let mut current_lesser_glyph_id = 0;
+        let mut current_upper_gid = 0;
+        let mut current_widths_vector = Vec::<Object>::new();
 
         // Scale the font width so that it sort-of fits into an 1000 unit square
+        // TODO(ghovax): Why does he exactly need to do that?
         let percentage_font_scaling = 1000.0 / (face_metrics.units_per_em as f32);
 
-        for gid in 0..self.ttf_face.glyph_count() {
-            if let Some(GlyphMetrics { width, .. }) = self.ttf_face.glyph_metrics(gid) {
-                if gid == current_high_gid {
-                    current_width_vector
+        // For each glyph ID present in the font face...
+        for glyph_id in 0..self.ttf_face.glyph_count() {
+            // If it has an available width extracted from the font itself...
+            if let Some(GlyphMetrics { width, .. }) = self.ttf_face.glyph_metrics(glyph_id) {
+                if glyph_id == current_upper_gid {
+                    // Register its width (corrected by the font scaling) as a PDF object if its glyph ID
+                    // is the same as the current upper bound of the glyph ID range
+                    current_widths_vector
                         .push(Integer((width as f32 * percentage_font_scaling) as i64));
-                    current_high_gid += 1;
+                    current_upper_gid += 1;
                 } else {
-                    widths_list.push(Integer(current_low_gid as i64));
-                    widths_list.push(Array(std::mem::take(&mut current_width_vector)));
+                    // Otherwise, drain the current width vector to the width objects and update the current lesser and upper glyph IDs
+                    width_objects.push(Integer(current_lesser_glyph_id as i64));
+                    width_objects.push(Array(std::mem::take(&mut current_widths_vector)));
 
-                    current_width_vector
+                    current_widths_vector
                         .push(Integer((width as f32 * percentage_font_scaling) as i64));
-                    current_low_gid = gid;
-                    current_high_gid = gid + 1;
+                    current_lesser_glyph_id = glyph_id;
+                    current_upper_gid = glyph_id + 1;
                 }
             } else {
+                // If the width is not available, then we just skip the character and log it
+                log::warn!("Glyph ID {} for the font {:?} has no width, skipping it when adding it to the document from the font", glyph_id, self.face_identifier);
                 continue;
             }
         }
-        // Push the last widths, because the loop is delayed by one iteration
-        widths_list.push(Integer(current_low_gid as i64));
-        widths_list.push(Array(std::mem::take(&mut current_width_vector)));
 
+        // Push the last widths in any case because the loop is delayed by one iteration
+        width_objects.push(Integer(current_lesser_glyph_id as i64));
+        width_objects.push(Array(std::mem::take(&mut current_widths_vector)));
+
+        // Configure the descriptors of the font for it to adhere to the PDF specification
         let mut font_descriptors = lopdf::Dictionary::from_iter(vec![
             ("Type", Name("Font".into())),
             ("Subtype", Name("CIDFontType2".into())),
@@ -296,10 +349,14 @@ impl Font {
                     ("Supplement", Integer(0)),
                 ])),
             ),
-            ("W", Array(widths_list)),
-            ("DW", Integer(1000)),
+            ("W", Array(width_objects)), // Include the widths of the characters
+            ("DW", Integer(1000)),       // TODO(ghovax): Why is the default width 1000?
         ]);
 
+        // Add to the document the bounding box for the glyphs of the chosen font face
+        // NOTE(ghovax): From first hand experience I've seen that this encoding overestimates the glyphs'
+        // bounding box when highlighting them with the cursor in any PDF viewer. After parsing the document
+        // through ghostscript, the issue is resolved.
         let font_bounding_box = vec![
             Integer(0),
             Integer(maximum_character_height as i64),
@@ -311,30 +368,35 @@ impl Font {
             Reference(inner_document.add_object(font_stream)),
         ));
 
+        // NOTE(ghovax): The following is a comment from the original author.
         // Although the following entry is technically not needed, Adobe Reader needs it
         font_descriptor_vector.push(("FontBBox".into(), Array(font_bounding_box)));
 
+        // Finally, add the font descriptors to the PDF document and set the associated key according to the specification
         let font_descriptor_vector_id =
             inner_document.add_object(lopdf::Dictionary::from_iter(font_descriptor_vector));
-
         font_descriptors.set("FontDescriptor", Reference(font_descriptor_vector_id));
 
+        // Do not forget to add the fields to the font information that we have initially omitted
+        // because we need to calculate them, logically this is a chain of elements of elements which
+        // are added to the PDF document in succession, one after the other
         font_vector.push((
             "DescendantFonts".into(),
             Array(vec![Dictionary(font_descriptors)]),
         ));
         font_vector.push(("ToUnicode".into(), Reference(cid_to_unicode_map_stream_id)));
 
+        // In the end return the constructed font PDF dictionary to be inserted into the document
         lopdf::Dictionary::from_iter(font_vector)
     }
 }
 
-/// One layer of PDF data. It can be converted into a `lopdf::Stream` by calling `into`.
+/// One layer of PDF data. It can be converted into a `lopdf::Stream` by calling `Into<lopdf::Stream>::into`.
 #[derive(Debug, Clone)]
 pub struct PdfLayer {
     /// Name of the layer. Must be present for the optional content group.
     pub(crate) name: String,
-    /// Stream objects in this layer. Usually, one layer == one stream.
+    /// Stream objects in this layer. Usually, one layer equals to one stream.
     pub(super) operations: Vec<lopdf::content::Operation>,
 }
 
@@ -346,6 +408,7 @@ impl From<PdfLayer> for lopdf::Stream {
             operations: value.operations,
         };
 
+        // Encode the uncompressed stream content into the stream
         Stream::new(
             Dictionary::new(),
             stream_content
@@ -387,13 +450,14 @@ pub struct ImageXObject {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum XObject {
+    /// The `XObject` interface for an image. It can be converted into a `lopdf::Object`.
     Image(ImageXObject),
 }
 
 impl From<XObject> for lopdf::Object {
     fn from(value: XObject) -> Self {
         match value {
-            // The conversion from an `XObject` to a PDF object is not yet implemented
+            // TODO(ghovax): The conversion from an `XObject` to a PDF object is not yet implemented.
             XObject::Image(_) => {
                 unimplemented!()
             }
@@ -406,7 +470,7 @@ impl From<XObject> for lopdf::Object {
 pub struct XObjectReference(String);
 
 impl XObjectReference {
-    /// Creates a new reference from a number.
+    /// Creates a new reference for an `XObject` from a number.
     pub fn new(index: usize) -> Self {
         Self(format!("X{index}"))
     }
@@ -422,8 +486,10 @@ impl XObjectMap {
         self.0
             .into_iter()
             .map(|(name, object)| {
+                // For each `XObject` present into the map, add it to the document by first converting it into a PDF object
                 let object: lopdf::Object = object.into();
                 let object_reference = document.add_object(object);
+                // Then collect the associated object name and reference to it into a PDF dictionary, which is returned in the end
                 (name, lopdf::Object::Reference(object_reference))
             })
             .collect()
@@ -446,7 +512,7 @@ impl OcgReference {
 pub struct OcgLayersMap(Vec<(OcgReference, lopdf::Object)>);
 
 impl OcgLayersMap {
-    /// Adds a new OCG List from a reference.
+    /// Adds a PDF object to the map for the OCG layers. Returns the reference to the added object.
     pub fn add_ocg(&mut self, object: lopdf::Object) -> OcgReference {
         let length = self.0.len();
         let ocg_reference = OcgReference::new(length);
@@ -1032,23 +1098,31 @@ type GlyphId = u32;
 type UnicodeCodePoint = u32;
 type CmapBlock = Vec<(GlyphId, UnicodeCodePoint)>;
 
-/// Generates a CMAP (character map) from valid cmap blocks.
+/// Generates a CMAP (character map) from valid cmap blocks by iterating over them. This function adheres to
+/// the PDF specification by employing a predefined beginning and end section which is inserted at compile time.
 fn generate_cid_to_unicode_map(face_name: String, all_cmap_blocks: Vec<CmapBlock>) -> String {
+    // Initialize the mapping with the predefined beginning (this is a text section)
     let mut cid_to_unicode_map =
         format!(include_str!("../assets/gid_to_unicode_beg.txt"), face_name);
 
+    // For each cmap block present into the given list of blocks, which isn't empty or doesn't exceed 100 elements in length...
     for cmap_block in all_cmap_blocks
         .into_iter()
         .filter(|block| !block.is_empty() || block.len() < 100)
     {
+        // Configure the mapping so that a cmap block section of data is initialized
         cid_to_unicode_map.push_str(format!("{} beginbfchar\r\n", cmap_block.len()).as_str());
         for (glyph_id, unicode) in cmap_block {
+            // Add all data present in the block as expected by the PDF specification
             cid_to_unicode_map.push_str(format!("<{glyph_id:04x}> <{unicode:04x}>\n").as_str());
         }
+        // Terminate the block
         cid_to_unicode_map.push_str("endbfchar\r\n");
     }
 
+    // Finalize the mapping between the character IDs and the Unicode characters
     cid_to_unicode_map.push_str(include_str!("../assets/gid_to_unicode_end.txt"));
+
     cid_to_unicode_map
 }
 
