@@ -36,7 +36,9 @@ fn main() {
     // Because we are not working with a `Document`, but instead with a `PdfDocument` we need
     // to first save the PDF document to bytes and then to a file
     let instance_id = "DLjCAhuTD3cvaoQCJnMvkC0iNWEGEfyD".to_string();
-    let pdf_document_bytes = pdf_document.save_to_bytes(instance_id.clone()).unwrap();
+    pdf_document.optimize();
+    pdf_document.write_all(instance_id.clone()).unwrap();
+    let pdf_document_bytes = pdf_document.save_to_bytes().unwrap();
 
     let pdf_file_path = format!("assets/{}.pdf", instance_id);
     let mut pdf_file = std::fs::File::create(pdf_file_path.clone())

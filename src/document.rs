@@ -186,6 +186,9 @@ impl Document {
             }
         }
 
+        // Write all the PDF document, then return it
+        pdf_document.write_all(self.instance_id.clone())?;
+
         Ok(pdf_document)
     }
 
@@ -197,11 +200,13 @@ impl Document {
     /// # Arguments
     ///
     /// * `path` - The path to the output PDF file.
+    ///
+    /// Note that all documents tend to be heavy so they need to be processed by `ps2pdf` to be optimized further.
     pub fn save_to_pdf_file(&self, path: &Path) -> Result<(), ContextError> {
-        // Note that all documents tend to be heavy so they need to be processed by ps2pdf to be optimized further
-        let pdf_document_bytes = self
-            .to_pdf_document()?
-            .save_to_bytes(self.instance_id.clone())?;
+        let mut pdf_document = self.to_pdf_document()?;
+        pdf_document.optimize();
+        let pdf_document_bytes = pdf_document.save_to_bytes()?;
+
         let mut pdf_file = std::fs::File::create(path).map_err(|error| {
             ContextError::with_error("Failed to create the output file", &error)
         })?;

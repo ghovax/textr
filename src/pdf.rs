@@ -482,15 +482,15 @@ pub struct XObjectMap(HashMap<String, XObject>);
 
 impl XObjectMap {
     /// Inserts the `XObject`s into the document, simultaneously constructing a PDF dictionary of them.
-    pub fn into_with_document(self, document: &mut lopdf::Document) -> lopdf::Dictionary {
+    pub fn into_with_document(&self, document: &mut lopdf::Document) -> lopdf::Dictionary {
         self.0
-            .into_iter()
+            .iter()
             .map(|(name, object)| {
                 // For each `XObject` present into the map, add it to the document by first converting it into a PDF object
-                let object: lopdf::Object = object.into();
+                let object: lopdf::Object = object.clone().into();
                 let object_reference = document.add_object(object);
                 // Then collect the associated object name and reference to it into a PDF dictionary, which is returned in the end
-                (name, lopdf::Object::Reference(object_reference))
+                (name.clone(), lopdf::Object::Reference(object_reference))
             })
             .collect()
     }
@@ -547,14 +547,14 @@ pub(crate) struct PdfResources {
 impl PdfResources {
     /// Inserts the resources into the document, simultaneously constructing a PDF dictionary of them.
     /// Returns the constructed dictionary and the vector of the OCG references.
-    pub(crate) fn into_with_document_and_layers(
-        self,
+    pub(crate) fn with_document_and_layers(
+        &self,
         inner_document: &mut lopdf::Document,
         layers: Vec<lopdf::Object>,
     ) -> (lopdf::Dictionary, Vec<OcgReference>) {
         let mut dictionary = lopdf::Dictionary::new();
 
-        let mut ocg_layers_dictionary = self.ocg_layers;
+        let mut ocg_layers_dictionary = self.ocg_layers.clone();
         let mut ocg_references = Vec::<OcgReference>::new();
 
         // Insert the in `XObjects` into the document and obtain the associated dictionary
@@ -622,7 +622,7 @@ impl PdfPage {
     /// * `inner_document` - The underlying PDF document.
     /// * `layers` - The layers to be iterated over.
     pub(crate) fn collect_resources_and_streams(
-        self,
+        &mut self,
         inner_document: &mut lopdf::Document,
         layers: &[(usize, lopdf::Object)],
     ) -> Result<(lopdf::Dictionary, Vec<lopdf::Stream>), ContextError> {
@@ -632,13 +632,13 @@ impl PdfPage {
         // simultaneously inserting them into the PDF document
         let (resource_dictionary, ocg_references) = self
             .resources
-            .into_with_document_and_layers(inner_document, current_layers);
+            .with_document_and_layers(inner_document, current_layers);
 
         let mut layer_streams = Vec::<lopdf::Stream>::new();
         use lopdf::content::Operation;
         use lopdf::Object::*;
 
-        for (index, mut layer) in self.layers.into_iter().enumerate() {
+        for (index, layer) in self.layers.iter_mut().enumerate() {
             // Push OCG and q to the beginning of the layer
             // In the PDF specification the q/Q operator is an operator which creates an isolated graphics state block
             // In our case we are creating one with no state
@@ -669,7 +669,7 @@ impl PdfPage {
             layer.operations.push(Operation::new("Q", vec![]));
             layer.operations.push(Operation::new("EMC", vec![]));
 
-            let layer_stream = layer.into();
+            let layer_stream = layer.clone().into();
             layer_streams.push(layer_stream);
         }
 
@@ -879,7 +879,7 @@ impl PdfDocument {
         Ok(())
     }
 
-    /// Save the `PdfDocument` to bytes in order for it to be written to a file or further processed.
+    /// Write the operations so far specified to the PDF file and finalize it.
     ///
     /// # Disclaimer
     ///
@@ -887,58 +887,60 @@ impl PdfDocument {
     /// 32 characters-long string. Also, saving the PDF to an actual document is a complicated process, so I recommend
     /// end-users of this library to even tinker with this function and adapt it to their needs.
     /// The output of this function is not optimized and should be fed into either ghostscript or `ps2pdf`.
-    pub fn save_to_bytes(mut self, instance_id: String) -> Result<Vec<u8>, ContextError> {
-        let pages_id = self.inner_document.new_object_id();
-
+    pub fn write_all(&mut self, instance_id: String) -> Result<(), ContextError> {
         use lopdf::Object::*;
         use lopdf::StringFormat::*;
-        // TODO: The user might like to choose all these parameters
-        let document_info_id =
-            self.inner_document
-                .add_object(Dictionary(lopdf::Dictionary::from_iter(vec![
-                    ("Trapped", "False".into()),
-                    (
-                        "CreationDate",
-                        String(
-                            to_pdf_timestamp_format(&OffsetDateTime::UNIX_EPOCH).into_bytes(),
-                            Literal,
-                        ),
-                    ),
-                    (
-                        "ModDate",
-                        String(
-                            to_pdf_timestamp_format(&OffsetDateTime::UNIX_EPOCH).into_bytes(),
-                            Literal,
-                        ),
-                    ),
-                    (
-                        "GTS_PDFX_Version",
-                        String("PDF/A-3:2012".to_string().into_bytes(), Literal),
-                    ),
-                    ("Title", String("Unknown".to_string().into_bytes(), Literal)),
-                    (
-                        "Author",
-                        String("Unknown".to_string().into_bytes(), Literal),
-                    ),
-                    (
-                        "Creator",
-                        String("Unknown".to_string().into_bytes(), Literal),
-                    ),
-                    (
-                        "Producer",
-                        String("Unknown".to_string().into_bytes(), Literal),
-                    ),
-                    (
-                        "Subject",
-                        String("Unknown".to_string().into_bytes(), Literal),
-                    ),
-                    (
-                        "Identifier",
-                        String(self.identifier.clone().into_bytes(), Literal),
-                    ),
-                    ("Keywords", String("".to_string().into_bytes(), Literal)),
-                ])));
 
+        // Construct all the general info that the PDF document needs in order to be parsed correctly
+        // and insert it into the PDF document itself
+        // TODO(ghovax): The user might want to choose all these parameters.
+        let document_info = lopdf::Dictionary::from_iter(vec![
+            ("Trapped", "False".into()),
+            (
+                "CreationDate",
+                String(
+                    to_pdf_timestamp_format(&OffsetDateTime::UNIX_EPOCH).into_bytes(),
+                    Literal,
+                ),
+            ),
+            (
+                "ModDate",
+                String(
+                    to_pdf_timestamp_format(&OffsetDateTime::UNIX_EPOCH).into_bytes(),
+                    Literal,
+                ),
+            ),
+            (
+                "GTS_PDFX_Version",
+                String("PDF/A-3:2012".to_string().into_bytes(), Literal),
+            ),
+            ("Title", String("Unknown".to_string().into_bytes(), Literal)),
+            (
+                "Author",
+                String("Unknown".to_string().into_bytes(), Literal),
+            ),
+            (
+                "Creator",
+                String("Unknown".to_string().into_bytes(), Literal),
+            ),
+            (
+                "Producer",
+                String("Unknown".to_string().into_bytes(), Literal),
+            ),
+            (
+                "Subject",
+                String("Unknown".to_string().into_bytes(), Literal),
+            ),
+            (
+                "Identifier",
+                String(self.identifier.clone().into_bytes(), Literal),
+            ),
+            ("Keywords", String("".to_string().into_bytes(), Literal)),
+        ]);
+        let document_info_id = self.inner_document.add_object(Dictionary(document_info));
+
+        // Construct the catalog, required by the PDF specification
+        let pages_id = self.inner_document.new_object_id();
         let mut catalog = lopdf::Dictionary::from_iter(vec![
             ("Type", "Catalog".into()),
             ("PageLayout", "OneColumn".into()),
@@ -946,15 +948,35 @@ impl PdfDocument {
             ("Pages", Reference(pages_id)),
         ]);
 
+        // Begin constructing the pages dictionary
         let mut pages = lopdf::Dictionary::from_iter(vec![
             ("Type", "Pages".into()),
             ("Count", Integer(self.pages.len() as i64)),
         ]);
-        let mut page_ids = Vec::<lopdf::Object>::new();
-        let page_layer_names: Vec<(usize, Vec<::std::string::String>)> = self
+
+        // Construct the dictionary for clarifying the OCG usage and insert it into the PDF document
+        let ocg_usage_dictionary = lopdf::Dictionary::from_iter(vec![
+            ("Type", Name("OCG".into())),
+            (
+                "CreatorInfo",
+                Dictionary(lopdf::Dictionary::from_iter(vec![
+                    ("Creator", String("Adobe Illustrator 14.0".into(), Literal)), // TODO: What the hell is this?
+                    ("Subtype", Name("Artwork".into())),
+                ])),
+            ),
+        ]);
+        let usage_ocg_dictionary_id = self.inner_document.add_object(ocg_usage_dictionary);
+
+        // Construct the array which explains the intents
+        let intent_array = Array(vec![Name("View".into()), Name("Design".into())]);
+        let intent_array_id = self.inner_document.add_object(intent_array);
+
+        let page_layer_numbers_and_names: Vec<(usize, Vec<::std::string::String>)> = self
             .pages
             .iter()
             .map(|page| {
+                // For each page in our PDF document, retrieve the number of the page and the
+                // names of the layers composing it in order to construct the OCG list
                 (
                     page.number,
                     page.layers.iter().map(|layer| layer.name.clone()).collect(),
@@ -962,73 +984,87 @@ impl PdfDocument {
             })
             .collect();
 
-        let usage_ocg_dictionary_id =
-            self.inner_document
-                .add_object(lopdf::Dictionary::from_iter(vec![
-                    ("Type", Name("OCG".into())),
-                    (
-                        "CreatorInfo",
-                        Dictionary(lopdf::Dictionary::from_iter(vec![
-                            ("Creator", String("Adobe Illustrator 14.0".into(), Literal)), // TODO: What the hell is this?
-                            ("Subtype", Name("Artwork".into())),
-                        ])),
-                    ),
-                ]));
-        let intent_array_id = self
-            .inner_document
-            .add_object(Array(vec![Name("View".into()), Name("Design".into())]));
-
-        // Page index, layer index, reference to OCG dictionary
-        let ocg_list: Vec<(usize, Vec<(usize, lopdf::Object)>)> = page_layer_names
-            .into_iter()
-            .map(|(page_index, layer_names)| {
-                (
-                    page_index,
-                    layer_names
+        // For each page number and layer name in each page...
+        let ocg_association: Vec<(usize, Vec<(usize, lopdf::Object)>)> =
+            page_layer_numbers_and_names
+                .into_iter()
+                .map(|(page_index, layer_names)| {
+                    // Collect the layer index and the reference to OCG dictionary just inserted into the document
+                    let layer_indices_and_dictionary_references = layer_names
                         .into_iter()
                         .enumerate()
                         .map(|(layer_index, layer_name)| {
-                            (
-                                layer_index,
-                                Reference(self.inner_document.add_object(Dictionary(
-                                    lopdf::Dictionary::from_iter(vec![
-                                        ("Type", Name("OCG".into())),
-                                        ("Name", String(layer_name.into(), Literal)),
-                                        ("Intent", Reference(intent_array_id)),
-                                        ("Usage", Reference(usage_ocg_dictionary_id)),
-                                    ]),
-                                ))),
-                            )
+                            // Insert the OCG dictionary with the intents, layer name and usage into the PDF document
+                            let ocg_dictionary = lopdf::Dictionary::from_iter(vec![
+                                ("Type", Name("OCG".into())),
+                                ("Name", String(layer_name.into(), Literal)),
+                                ("Intent", Reference(intent_array_id)),
+                                ("Usage", Reference(usage_ocg_dictionary_id)),
+                            ]);
+                            let ocg_dictionary_id =
+                                self.inner_document.add_object(Dictionary(ocg_dictionary));
+
+                            (layer_index, Reference(ocg_dictionary_id))
                         })
-                        .collect(),
-                )
+                        .collect();
+
+                    // For each page index, collect the layer indices and the reference to OCG dictionaries inserted into the PDF document
+                    (page_index, layer_indices_and_dictionary_references)
+                })
+                .collect();
+
+        // For each layer present in the OCG association just constructed, retrieve each object
+        let ocg_dictionary_references: Vec<lopdf::Object> = ocg_association
+            .iter()
+            .flat_map(|(_, layers)| {
+                layers
+                    .iter()
+                    .map(|(_, dictionary_reference)| dictionary_reference.clone())
             })
             .collect();
 
-        let flattened_ocg_list: Vec<lopdf::Object> = ocg_list
-            .iter()
-            .flat_map(|(_, layers)| layers.iter().map(|(_, object)| object.clone()))
-            .collect();
-
+        // Update the PDF catalog with the OCGs just inserted into the document
         catalog.set(
             "OCProperties",
             Dictionary(lopdf::Dictionary::from_iter(vec![
-                ("OCGs", Array(flattened_ocg_list.clone())),
+                ("OCGs", Array(ocg_dictionary_references.clone())),
                 (
                     "D",
                     Dictionary(lopdf::Dictionary::from_iter(vec![
-                        ("Order", Array(flattened_ocg_list.clone())),
+                        ("Order", Array(ocg_dictionary_references.clone())),
                         ("RBGroups", Array(vec![])),
-                        ("ON", Array(flattened_ocg_list)),
+                        ("ON", Array(ocg_dictionary_references)),
                     ])),
                 ),
             ])),
         );
 
-        let fonts_dictionary = Self::insert_fonts_into_document(&mut self);
+        // Save the catalog after inserting it into the PDF document
+        let catalog_id = self.inner_document.add_object(catalog);
+
+        self.inner_document
+            .trailer
+            .set("Root", Reference(catalog_id));
+        self.inner_document
+            .trailer
+            .set("Info", Reference(document_info_id));
+        self.inner_document.trailer.set(
+            "ID",
+            Array(vec![
+                String(self.identifier.clone().into_bytes(), Literal),
+                String(instance_id.as_bytes().to_vec(), Literal),
+            ]),
+        );
+
+        // Load the set fonts and insert them into the PDF document
+        let fonts_dictionary = self.insert_fonts_into_document();
         let fonts_dictionary_id = self.inner_document.add_object(fonts_dictionary);
 
-        for (index, page) in self.pages.into_iter().enumerate() {
+        let mut page_ids = Vec::<lopdf::Object>::new();
+
+        // For each page present in the document...
+        for (index, page) in self.pages.iter_mut().enumerate() {
+            // Construct the dictionary which specifies all the page information
             let mut page_dictionary = lopdf::Dictionary::from_iter(vec![
                 ("Type", "Page".into()),
                 ("Rotate", Integer(0)),
@@ -1048,72 +1084,70 @@ impl PdfDocument {
                 ("Parent", Reference(pages_id)),
             ]);
 
+            // If present, extend the page dictionary with further settings
             if let Some(extension) = &page.extend_with {
                 for (key, value) in extension.iter() {
                     page_dictionary.set(key.to_vec(), value.clone())
                 }
             }
 
-            // Will collect the resources needed for rendering this page
-            let unmerged_layers = ocg_list.iter().find(|ocg| ocg.0 - 1 == index).ok_or({
-                let comparisons = ocg_list.iter().map(|ocg| ocg.0).collect::<Vec<_>>();
+            // Collect the layers of the OCG associated to the current document page
+            let unmerged_layer = ocg_association.iter().find(|ocg| ocg.0 - 1 == index).ok_or({
+                // If this operation fails, return an error with context
+                let comparisons = ocg_association.iter().map(|ocg| ocg.0 - 1).collect::<Vec<_>>();
                 ContextError::with_context(
                     format!("Unable to collect the resources needed for rendering the page: can't find {:?} in {:?}", index, comparisons),
                 )
             })?;
-            let (mut resources_page, layer_streams) =
-                page.collect_resources_and_streams(&mut self.inner_document, &unmerged_layers.1)?;
 
-            resources_page.set("Font", Reference(fonts_dictionary_id)); // TODO: There was a Some here, but I do not know where it went
+            // Collect the streams and the resources associated to the current layer
+            let (mut resource_dictionary, layer_streams) =
+                page.collect_resources_and_streams(&mut self.inner_document, &unmerged_layer.1)?;
 
-            if !resources_page.is_empty() {
-                let resources_page_id = self.inner_document.add_object(Dictionary(resources_page));
-                page_dictionary.set("Resources", Reference(resources_page_id));
-            }
+            // Set the fonts for the resource associated to the current layer, insert it into the PDF document
+            // and then inserts the resource dictionary into the one for the pages
+            resource_dictionary.set("Font", Reference(fonts_dictionary_id));
+            let resources_page_id = self
+                .inner_document
+                .add_object(Dictionary(resource_dictionary));
+            page_dictionary.set("Resources", Reference(resources_page_id));
 
-            // Merge all streams of the individual layers into one big stream
-            let mut layer_streams_merged_vector = Vec::<u8>::new();
+            // Merge all streams of the individual layers into one unified stream, then
+            // it into the PDF document as a whole by setting the "Contents" field
+            let mut merged_layer_streams = Vec::<u8>::new();
             for mut stream in layer_streams {
-                layer_streams_merged_vector.append(&mut stream.content);
+                merged_layer_streams.append(&mut stream.content);
             }
-
             let merged_layer_stream =
-                lopdf::Stream::new(lopdf::Dictionary::new(), layer_streams_merged_vector);
+                lopdf::Stream::new(lopdf::Dictionary::new(), merged_layer_streams);
             let page_content_id = self.inner_document.add_object(merged_layer_stream);
-
             page_dictionary.set("Contents", Reference(page_content_id));
+
+            // Inserts the page dictionary into the document and save the associated reference
             let page_id = self.inner_document.add_object(page_dictionary);
             page_ids.push(Reference(page_id))
         }
 
+        // Use all the collected page references in order to set the "Kids" field of the PDF document
+        // and then insert the pages dictionary into the document itself as a last operation
         pages.set::<_, lopdf::Object>("Kids".to_string(), page_ids.into());
-
         self.inner_document
             .objects
             .insert(pages_id, Dictionary(pages));
 
-        // Save inner document
-        let catalog_id = self.inner_document.add_object(catalog);
+        Ok(())
+    }
 
-        self.inner_document
-            .trailer
-            .set("Root", Reference(catalog_id));
-        self.inner_document
-            .trailer
-            .set("Info", Reference(document_info_id));
-        self.inner_document.trailer.set(
-            "ID",
-            Array(vec![
-                String(self.identifier.into_bytes(), Literal),
-                String(instance_id.as_bytes().to_vec(), Literal),
-            ]),
-        );
-
+    /// Optimize the PDF document (only superficially).
+    pub fn optimize(&mut self) {
         self.inner_document.prune_objects();
         self.inner_document.delete_zero_length_streams();
         self.inner_document.renumber_objects();
         self.inner_document.compress();
+    }
 
+    /// Save the `PdfDocument` to bytes in order for it to be written to a file or further processed.
+    pub fn save_to_bytes(&mut self) -> Result<Vec<u8>, ContextError> {
         let mut pdf_document_bytes = Vec::new();
         let mut writer = BufWriter::new(&mut pdf_document_bytes);
         self.inner_document.save_to(&mut writer).map_err(|error| {

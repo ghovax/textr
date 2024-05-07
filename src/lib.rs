@@ -1,5 +1,7 @@
 //!
 
+/// The module were the `Document` interface is explained.
+///
 /// # Introduction
 ///
 /// The entry point of this module is the `Document` struct. The end user can construct one either from code
@@ -16,9 +18,10 @@
 /// if it is successfully able to convert the document into a PDF document representation, which can then be saved.
 pub mod document;
 
-/// This module contains the `ContextError` type which is the error type used throughout this library. The reason why
-/// this type has been implemented is to uniform the error reporting without delving to deep into specific error codes which
-/// for such library would be too many and definitely out of scope.
+/// This module contains the `ContextError` type which is the error type used throughout this library.
+///
+/// The reason why this type has been implemented is to uniform the error reporting without delving to deep
+/// into specific error codes which for such library would be too many and definitely out of scope.
 ///
 /// The `ContextError` type is always returns from a `Result` type, which means that the end user can expect to obtain an explanation
 /// whenever a function returns an error. If an error happened in a function which was called inside a function of this library,
@@ -28,6 +31,8 @@ pub mod document;
 /// a public type, which means that it can be reused in different libraries by implementing functions or external traits on top of it.
 pub mod error;
 
+/// The module were the `PdfDocument` interface for working with PDF documents is explained.
+///
 /// # Disclaimer
 ///
 /// This work was partially adapted from the one of [fschutt](https://github.com/fschutt) for the crate [printpdf](https://github.com/fschutt/printpdf).
