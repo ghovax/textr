@@ -1,4 +1,9 @@
-//!
+//! TeXtr is an interface for the generation of PDF documents from the parsing of a JSON document
+//! which adheres to a specific format compatible with the library. This format is specified in the
+//! `Document` struct, which offers a method `to_pdf` that converts this high-level format into a PDF document.
+//! In this crate, PDF documents are represented by the struct `PdfDocument`, which also offers a high-level interface
+//! for PDF manipulation. The nitty-gritty details of PDF documents manipulation are hidden in the implementation of
+//! this struct, but in any case, if needed, they are to a certain degree exposed to the end-user.
 
 /// The module were the `Document` interface is explained.
 ///
