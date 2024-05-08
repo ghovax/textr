@@ -9,16 +9,33 @@ interface for PDF manipulation. The nitty-gritty details of PDF documents manipu
 are hidden in the implementation of this struct, but in any case, if needed, they 
 are to a certain degree exposed to the end-user.
 
+# Documentation
+
+The documentation is available on the website docs.rs at the following [link](https://docs.rs/textr/latest/textr/).
+
+There is two ways to use this library: the first one is writing to a PDF document from 
+scratch as shown in the `pdf_from_scratch` example, by calling functions such as 
+`PdfDocument::add_font`, insert `PdfDocument::add_page_with_layer` and 
+`PdfDocument::write_text_to_layer_in_page`, followed by `PdfDocument::write_all`, which 
+will finalize the document which can then be saved to a file; this method requires both 
+the documents ID and the instance ID to be given by the user. 
+
+The other way in which this library can be used, which is the intended one, is to 
+provide either a JSON document which encodes the `Document` data structure (or the 
+data structure itself in code, possibly generated through some layouting algorithm) and 
+then to call the `Document::to_pdf` function, which will automatically generate a 
+`PdfDocument` that can be saved to a file or further manipulated.
+
 # Installation
 
 Of course, after having installed Rust through [rustup](https://rustup.rs) or 
 either way having updated Rust to the latest version, add the following to your 
-`Cargo.toml` file in your project in order to use the library.
+`Cargo.toml` file in your project in order to use the library for personal development.
 ```toml
 textr = "0.2.0"
 ```
 
-If you want to try out this library yourself from the given examples, then clone 
+If you want to just try out this library yourself from the given examples, then clone 
 this repository and then run the command:
 ```bash
 cargo run --example <example_name>
@@ -26,7 +43,9 @@ cargo run --example <example_name>
 where `example_name` can be one of the following, either `document_to_pdf` or
 `pdf_from_scratch`. The example `document_to_pdf` is a command-line utility
 which will allow you to easily convert any JSON document which adheres to the
-format specific to this library (examples can be found in the `assets` folder).
+format specific to this library (examples can be found in the `assets` folder),
+while the `pdf_from_scratch` example will generate a PDF document directly, 
+bypassing the need for a `Document`-compatible JSON file.
 
 # Testing
 

@@ -7,3 +7,7 @@ First version with API and documentation almost complete.
 Documentation bump-up with slight modification to the `PdfDocument` API which isn't 
 backwards-compatible: its function `save_to_bytes` is now split in `optimize`, `write_all`
 and `save_to_bytes` which does only what it says and nothing else.
+
+# 0.2.1
+
+Updated the documentation to include a README.
