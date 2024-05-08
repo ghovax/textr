@@ -11,3 +11,7 @@ and `save_to_bytes` which does only what it says and nothing else.
 # 0.2.1
 
 Updated the documentation to include a README.
+
+# 0.2.2
+
+Fixed some things in the README and a spelling mistake in the documentation.

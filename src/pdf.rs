@@ -1331,7 +1331,7 @@ pub fn optimize_pdf_file_with_gs(pdf_path: &str) -> Result<(), ContextError> {
 ///
 /// * `pdf_path` - The path to the PDF file to be optimized.
 ///
-/// This is procedure of creating an intermediate file is a workaround to a limitation of the shell.
+/// This procedure of creating an intermediate file is a workaround to a limitation of the shell.
 pub fn optimize_pdf_file_with_ps2pdf(pdf_path: &str) -> Result<(), ContextError> {
     // Run ps2pdf to optimize the PDF file
     let child = std::process::Command::new("ps2pdf")
