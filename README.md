@@ -32,7 +32,7 @@ Of course, after having installed Rust through [rustup](https://rustup.rs) or
 either way having updated Rust to the latest version, add the following to your 
 `Cargo.toml` file in your project in order to use the library for personal development.
 ```toml
-textr = "0.2.0"
+textr = "0.2"
 ```
 
 If you want to just try out this library yourself from the given examples, then clone 
