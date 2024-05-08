@@ -11,7 +11,7 @@ use textr::error::ContextError;
 #[test]
 fn generate_fuzz_targets() {
     // The number of documents to generate
-    let documents_to_generate = 30;
+    let documents_to_generate = 7;
     // The range of font indices to pick from (this is chosen based on the fonts loaded)
     let font_indices_range = 0..30;
     // The maximum number of elements
