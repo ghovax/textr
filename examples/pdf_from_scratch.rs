@@ -40,7 +40,7 @@ fn main() {
     pdf_document.write_all(instance_id.clone()).unwrap();
     let pdf_document_bytes = pdf_document.save_to_bytes().unwrap();
 
-    let pdf_file_path = format!("assets/{}.pdf", instance_id);
+    let pdf_file_path = format!("assets/pdfs/{}.pdf", instance_id);
     let mut pdf_file = std::fs::File::create(pdf_file_path.clone())
         .map_err(|error| ContextError::with_error("Failed to create the output file", &error))
         .unwrap();
