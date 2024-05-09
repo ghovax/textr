@@ -11,24 +11,24 @@ use unicode_normalization::UnicodeNormalization as _;
 
 use crate::error::ContextError;
 
-/// The (insofar) relevant vertical metrics of a font.
+/// The relevant vertical metrics of a font.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct FontMetrics {
+struct FontMetrics {
     /// The ascent of the font.
-    pub ascent: i16,
+    ascent: i16,
     /// The descent of the font.
-    pub descent: i16,
+    descent: i16,
     /// The number of units per em of the font.
-    pub units_per_em: u16,
+    units_per_em: u16,
 }
 
-/// The (insofar) relevant metrics associated to a single glyph of a font.
+/// The relevant metrics associated to a single glyph of a font.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct GlyphMetrics {
+struct GlyphMetrics {
     /// The width of the glyph.
-    pub width: u32,
+    width: u32,
     /// The height of the glyph.
-    pub height: u32,
+    height: u32,
 }
 
 /// A font face loaded from a TTF font, together with its measure of units per em.
@@ -151,7 +151,7 @@ impl TtfFontFace {
 /// A font loaded from a TTF font, together with its measure of units per em, the byte data
 /// data was loaded from and an identifier for the font face.
 #[derive(Debug, Clone)]
-pub struct Font {
+struct Font {
     /// The byte data the font was loaded from.
     bytes: Vec<u8>,
     /// The actual font face, together with its measure of units per em.
@@ -393,11 +393,11 @@ impl Font {
 
 /// One layer of PDF data. It can be converted into a `lopdf::Stream` by calling `Into<lopdf::Stream>::into`.
 #[derive(Debug, Clone)]
-pub struct PdfLayer {
+struct PdfLayer {
     /// Name of the layer. Must be present for the optional content group.
-    pub(crate) name: String,
+    name: String,
     /// Stream objects in this layer. Usually, one layer equals to one stream.
-    pub(super) operations: Vec<lopdf::content::Operation>,
+    operations: Vec<lopdf::content::Operation>,
 }
 
 impl From<PdfLayer> for lopdf::Stream {
@@ -425,23 +425,24 @@ impl From<PdfLayer> for lopdf::Stream {
 use nalgebra_glm as glm;
 
 /// The low-level image representation for a PDF document.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct ImageXObject {
+struct ImageXObject {
     /// Width of the image (original width, not scaled width).
-    pub width: f32,
+    width: f32,
     /// Height of the image (original height, not scaled height).
-    pub height: f32,
+    height: f32,
     /// Bits per color component (1, 2, 4, 8, 16) - 1 for black/white, 8 Greyscale / RGB, etc.
     /// If using a JPXDecode filter (for JPEG images), this can be inferred from the image data.
-    pub bits_per_component: u16,
+    bits_per_component: u16,
     /// Should the image be interpolated when scaled?
-    pub interpolate: bool,
+    interpolate: bool,
     /// The actual data from the image.
-    pub image_data: Vec<u8>,
+    image_data: Vec<u8>,
     // SoftMask for transparency, if `None` assumes no transparency. See page 444 of the adope pdf 1.4 reference.
-    pub soft_mask: Option<lopdf::ObjectId>,
+    soft_mask: Option<lopdf::ObjectId>,
     /// The bounding box of the image.
-    pub clipping_bounding_box: Option<glm::Mat4>,
+    clipping_bounding_box: Option<glm::Mat4>,
 }
 
 /// `XObject`s are parts of the PDF specification. They allow for complex behavior to be
@@ -449,7 +450,7 @@ pub struct ImageXObject {
 /// My implementation is only partial as it allows only for images.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub enum XObject {
+enum XObject {
     /// The `XObject` interface for an image. It can be converted into a `lopdf::Object`.
     Image(ImageXObject),
 }
@@ -467,22 +468,23 @@ impl From<XObject> for lopdf::Object {
 
 /// Named reference to an `XObject`.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct XObjectReference(String);
+struct XObjectReference(String);
 
 impl XObjectReference {
     /// Creates a new reference for an `XObject` from a number.
-    pub fn new(index: usize) -> Self {
+    #[allow(dead_code)]
+    fn new(index: usize) -> Self {
         Self(format!("X{index}"))
     }
 }
 
 /// The association between the `XObject`s properties and the actual `XObject`s themselves.
 #[derive(Default, Debug, Clone)]
-pub struct XObjectMap(HashMap<String, XObject>);
+struct XObjectMap(HashMap<String, XObject>);
 
 impl XObjectMap {
     /// Inserts the `XObject`s into the document, simultaneously constructing a PDF dictionary of them.
-    pub fn into_with_document(&self, document: &mut lopdf::Document) -> lopdf::Dictionary {
+    fn insert_into_document(&self, document: &mut lopdf::Document) -> lopdf::Dictionary {
         self.0
             .iter()
             .map(|(name, object)| {
@@ -498,22 +500,22 @@ impl XObjectMap {
 
 /// A named reference to an OCG (Optional Content Group), which is parts of the PDF specification.
 #[derive(Debug, Clone)]
-pub struct OcgReference(String);
+struct OcgReference(String);
 
 impl OcgReference {
     /// Creates a new OCG reference from an index.
-    pub fn new(index: usize) -> Self {
+    fn new(index: usize) -> Self {
         Self(format!("MC{index}"))
     }
 }
 
 /// The association between the OCG references and the actual PDF objects.
 #[derive(Default, Debug, Clone)]
-pub struct OcgLayersMap(Vec<(OcgReference, lopdf::Object)>);
+struct OcgLayersMap(Vec<(OcgReference, lopdf::Object)>);
 
 impl OcgLayersMap {
     /// Adds a PDF object to the map for the OCG layers. Returns the reference to the added object.
-    pub fn add_ocg(&mut self, object: lopdf::Object) -> OcgReference {
+    fn add_ocg(&mut self, object: lopdf::Object) -> OcgReference {
         let length = self.0.len();
         let ocg_reference = OcgReference::new(length);
         self.0.push((ocg_reference.clone(), object));
@@ -537,17 +539,17 @@ impl From<OcgLayersMap> for lopdf::Dictionary {
 
 /// Struct for storing the PDF Resources, to be used on a PDF page.
 #[derive(Default, Debug, Clone)]
-pub(crate) struct PdfResources {
+struct PdfResources {
     /// External graphics objects.
-    pub xobjects: XObjectMap,
+    xobjects: XObjectMap,
     /// Layers / optional content ("Properties") in the resource dictionary.
-    pub ocg_layers: OcgLayersMap,
+    ocg_layers: OcgLayersMap,
 }
 
 impl PdfResources {
     /// Inserts the resources into the document, simultaneously constructing a PDF dictionary of them.
     /// Returns the constructed dictionary and the vector of the OCG references.
-    pub(crate) fn with_document_and_layers(
+    fn with_document_and_layers(
         &self,
         inner_document: &mut lopdf::Document,
         layers: Vec<lopdf::Object>,
@@ -559,7 +561,7 @@ impl PdfResources {
 
         // Insert the in `XObjects` into the document and obtain the associated dictionary
         let xobjects_dictionary: lopdf::Dictionary =
-            self.xobjects.into_with_document(inner_document);
+            self.xobjects.insert_into_document(inner_document);
 
         // If the given layers are not empty..
         if !layers.is_empty() {
@@ -594,21 +596,21 @@ impl PdfResources {
 /// The representation of a PDF page. Utility functions are implemented for this struct
 /// so that its content can be inserted into the underlying PDF document.
 #[derive(Debug, Clone)]
-pub struct PdfPage {
+struct PdfPage {
     /// The index of the page in the document.
-    pub(crate) number: usize,
+    number: usize,
     /// Page width in millimeters.
-    pub width: f32,
+    width: f32,
     /// Page height in millimeters.
-    pub height: f32,
+    height: f32,
     /// Page layers.
-    pub layers: Vec<PdfLayer>,
+    layers: Vec<PdfLayer>,
     /// Resources used in this page.
-    pub(crate) resources: PdfResources,
+    resources: PdfResources,
     /// Extend the page with custom ad-hoc attributes, as an escape hatch to the low level lopdf library.
     /// Can be used to add annotations to a page.
     /// If your dictionary is wrong it will produce a broken PDF without warning or useful messages.
-    pub(crate) extend_with: Option<lopdf::Dictionary>,
+    extend_with: Option<lopdf::Dictionary>,
 }
 
 impl PdfPage {
@@ -621,7 +623,7 @@ impl PdfPage {
     ///
     /// * `inner_document` - The underlying PDF document.
     /// * `layers` - The layers to be iterated over.
-    pub(crate) fn collect_resources_and_streams(
+    fn collect_resources_and_streams(
         &mut self,
         inner_document: &mut lopdf::Document,
         layers: &[(usize, lopdf::Object)],
@@ -698,7 +700,7 @@ pub struct PdfDocument {
     /// The identifier of the document, it is used to in order to set the PDF `ID` tag.
     pub identifier: String,
     /// The pages of the PDF document.
-    pub(crate) pages: Vec<PdfPage>,
+    pages: Vec<PdfPage>,
 }
 
 impl PdfDocument {

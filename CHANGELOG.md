@@ -15,3 +15,7 @@ Updated the documentation to include a README.
 # 0.2.2
 
 Fixed some things in the README and a spelling mistake in the documentation.
+
+# 0.3.0
+
+Removed certain public fields throughout the `pdf.rs` file for clarity.
