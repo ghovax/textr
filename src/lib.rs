@@ -1,11 +1,14 @@
-//! TeXtr is an interface for the generation of PDF documents from the parsing of a JSON document
-//! which adheres to a specific format compatible with the library. This format is specified in the
-//! `Document` struct, which offers a method `to_pdf` that converts this high-level format into a PDF document.
-//! In this crate, PDF documents are represented by the struct `PdfDocument`, which also offers a high-level interface
-//! for PDF manipulation. The nitty-gritty details of PDF documents manipulation are hidden in the implementation of
-//! this struct, but in any case, if needed, they are to a certain degree exposed to the end-user.
+//! TeXtr is an interface for the generation of PDF documents from the parsing of
+//! a JSON document which adheres to a specific format compatible with the library.
+//! This format is specified in the `Document` struct, which offers a method called `to_pdf`
+//! that converts this high-level representation into a PDF document.
+//!
+//! In this crate, PDF documents are represented by the struct `PdfDocument`, which offers a high-level
+//! interface for direct PDF manipulation. The nitty-gritty details for the manipulation of PDF documents
+//! are hidden in the implementation of this struct, but in any case, if needed, they
+//! are to a certain degree exposed to the end-user.
 
-/// The module were the `Document` interface is explained.
+/// The module were the `Document` interface is presented.
 ///
 /// # Introduction
 ///
@@ -36,7 +39,7 @@ pub mod document;
 /// a public type, which means that it can be reused in different libraries by implementing functions or external traits on top of it.
 pub mod error;
 
-/// The module were the `PdfDocument` interface for working with PDF documents is explained.
+/// The module were the `PdfDocument` interface for working with PDF documents is presented.
 ///
 /// # Disclaimer
 ///
@@ -60,6 +63,6 @@ pub mod error;
 /// # Introduction
 ///
 /// The main component of this module is the struct `PdfDocument`. For it, I have implemented different convenience functions
-/// such as `add_page_with_layer`, `add_font`, `write_text_to_layer_in_page` and `save_to_bytes` which allow the end user to interact
+/// such as `add_page_with_layer`, `add_font`, `write_text_to_layer_in_page`, `write_all` and `save_to_bytes` which allow the end user to interact
 /// with a PDF document in a meaningful way, while keeping all the complexity hidden below a curtain of private methods.
 pub mod pdf;
